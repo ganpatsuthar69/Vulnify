@@ -85,8 +85,14 @@ class OsvCache:
 _global_osv_cache: OsvCache | None = None
 
 
-def get_osv_cache(ttl_seconds: int = 86400) -> OsvCache:
+def get_osv_cache(ttl_seconds: int | None = None) -> OsvCache:
     global _global_osv_cache
     if _global_osv_cache is None:
-        _global_osv_cache = OsvCache(default_ttl_seconds=ttl_seconds)
+        from vulnify.config import get_settings
+
+        effective_ttl = (
+            ttl_seconds if ttl_seconds is not None else get_settings().OSV_CACHE_TTL_SECONDS
+        )
+        _global_osv_cache = OsvCache(default_ttl_seconds=effective_ttl)
     return _global_osv_cache
+

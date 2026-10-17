@@ -6,6 +6,7 @@ import type {
   ProjectAdvisory,
   ProjectMatchResponse,
   VulnerabilityFinding,
+  PackageVersion,
 } from './types'
 import { ApiClientError, isMockMode, parseApiError } from '@/shared/api/client'
 import type { ApiClientErrorOptions } from '@/shared/types/api'
@@ -243,6 +244,58 @@ export async function getProjectAdvisories(projectId: string): Promise<ProjectAd
 
   await handleErrorResponse(response)
   throw new ProjectApiError('Failed to fetch project advisories.', { status: response.status })
+}
+
+const mockPackageVersions: Record<string, PackageVersion[]> = {
+  'mock-proj-1': [
+    {
+      id: 'npm:lodash@4.17.20',
+      name: 'lodash',
+      version: '4.17.20',
+      ecosystem: 'npm',
+      purl: 'pkg:npm/lodash@4.17.20',
+    },
+    {
+      id: 'npm:express@4.18.2',
+      name: 'express',
+      version: '4.18.2',
+      ecosystem: 'npm',
+      purl: 'pkg:npm/express@4.18.2',
+    },
+    {
+      id: 'npm:accepts@1.3.8',
+      name: 'accepts',
+      version: '1.3.8',
+      ecosystem: 'npm',
+      purl: 'pkg:npm/accepts@1.3.8',
+    },
+  ],
+}
+
+export async function getProjectPackages(projectId: string): Promise<PackageVersion[]> {
+  if (isMockMode()) {
+    return [...(mockPackageVersions[projectId] || [])]
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/packages`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as PackageVersion[]
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch project package versions.', { status: response.status })
 }
 
 export async function matchProjectVulnerabilities(projectId: string): Promise<ProjectMatchResponse> {

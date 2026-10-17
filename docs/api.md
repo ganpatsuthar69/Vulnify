@@ -362,6 +362,33 @@ Retrieves the list of supported package ecosystems.
 
 ---
 
+### 10. `GET /api/projects/{project_id}/packages`
+
+Retrieves distinct package versions reachable from services belonging to a project in FalkorDB.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/packages`
+- **Credentials**: `include`
+
+#### Responses
+- **`200 OK`**: List of package versions.
+  ```json
+  [
+    {
+      "id": "npm:lodash@4.17.20",
+      "name": "lodash",
+      "version": "4.17.20",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/lodash@4.17.20"
+    }
+  ]
+  ```
+- **`401 Unauthorized`**: Authentication required.
+- **`404 Not Found`**: Project not found.
+
+---
+
 ## Dependency Ingestion Endpoints (US-102)
 
 ### 10. `POST /api/projects/{project_id}/dependencies/import`

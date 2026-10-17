@@ -269,3 +269,16 @@ async def test_query_parameters_and_get_by_id_safe(client: AsyncClient) -> None:
     ecosystems = eco_res.json()["supported_ecosystems"]
     assert "npm" in ecosystems
     assert "PyPI" in ecosystems
+
+
+# 13. List packages returns 200 with list of packages
+@pytest.mark.asyncio
+async def test_list_project_packages(client: AsyncClient) -> None:
+    authenticate_client(client)
+    res = await client.post("/api/projects", json=VALID_PROJECT)
+    assert res.status_code == 201
+    project_id = res.json()["id"]
+
+    pkg_res = await client.get(f"/api/projects/{project_id}/packages")
+    assert pkg_res.status_code == 200
+    assert isinstance(pkg_res.json(), list)

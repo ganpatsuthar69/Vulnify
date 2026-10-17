@@ -24,6 +24,7 @@ from vulnify.schemas import (
     ProjectCreateRequest,
     ProjectMatchResponse,
     ProjectResponse,
+    PackageVersionResponse,
     UserResponse,
     VulnerabilityFindingResponse,
 )
@@ -427,6 +428,40 @@ async def get_project_vulnerabilities(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve vulnerability findings from database.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/packages",
+    response_model=list[PackageVersionResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List all package versions imported for a project",
+)
+async def list_project_packages(
+    project_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    advisory_repo: IAdvisoryRepository = Depends(get_advisory_repository),
+) -> list[PackageVersionResponse]:
+    """Retrieve distinct package versions reachable from services belonging to a project."""
+    try:
+        packages = advisory_repo.get_project_package_versions(project.id)
+        return [
+            PackageVersionResponse(
+                id=p.id,
+                name=p.name,
+                version=p.version,
+                ecosystem=p.ecosystem,
+                purl=p.purl,
+            )
+            for p in packages
+        ]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve project packages from database.",
         ) from exc
 
 

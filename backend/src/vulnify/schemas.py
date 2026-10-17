@@ -269,5 +269,9 @@ class VulnerabilityFindingResponse(BaseModel):
     fingerprint: str
 
 
-
-
+class PackageVersionResponse(BaseModel):
+    id: str
+    name: str
+    version: str
+    ecosystem: str
+    purl: str

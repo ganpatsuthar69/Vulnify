@@ -14,6 +14,14 @@ export interface ProjectCreateRequest {
   description?: string | null
 }
 
+export interface PackageVersion {
+  id: string
+  name: string
+  version: string
+  ecosystem: string
+  purl: string
+}
+
 export type CreateProjectInput = ProjectCreateRequest
 
 export interface ImportSummary {
