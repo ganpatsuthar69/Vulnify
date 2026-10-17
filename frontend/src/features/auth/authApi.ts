@@ -1,19 +1,11 @@
 import type { AuthUser } from './types'
+import { ApiClientError, isMockMode, parseApiError } from '@/shared/api/client'
+import type { ApiClientErrorOptions } from '@/shared/types/api'
 
-export class AuthApiError extends Error {
-  readonly status?: number
-  readonly retryAfter?: number
-  readonly isNetworkError: boolean
-
-  constructor(
-    message: string,
-    options?: { status?: number; retryAfter?: number; isNetworkError?: boolean },
-  ) {
-    super(message)
+export class AuthApiError extends ApiClientError {
+  constructor(message: string, options?: ApiClientErrorOptions) {
+    super(message, options)
     this.name = 'AuthApiError'
-    this.status = options?.status
-    this.retryAfter = options?.retryAfter
-    this.isNetworkError = options?.isNetworkError ?? false
   }
 }
 
@@ -30,6 +22,8 @@ function notifyUnauthorized(): void {
   }
 }
 
+export { parseApiError }
+
 // In-memory mock storage when VITE_USE_MOCK=true
 interface MockStoredUser {
   id: string
@@ -42,17 +36,17 @@ interface MockStoredUser {
 const mockUsersDatabase = new Map<string, MockStoredUser>()
 let mockSessionUser: AuthUser | null = null
 
-function isMockMode(): boolean {
-  return import.meta.env.VITE_USE_MOCK === 'true'
-}
-
 export async function register(name: string, email: string, password: string): Promise<AuthUser> {
   const cleanedEmail = email.trim().toLowerCase()
   const cleanedName = name.trim()
 
   if (isMockMode()) {
     if (mockUsersDatabase.has(cleanedEmail)) {
-      throw new AuthApiError('An account with this email already exists.', { status: 409 })
+      throw new AuthApiError('An account with this email already exists.', {
+        status: 409,
+        code: 'CONFLICT',
+        requestId: `req-mock-${Date.now()}`,
+      })
     }
     const newUser: MockStoredUser = {
       id: `mock-user-${Date.now()}`,
@@ -83,30 +77,22 @@ export async function register(name: string, email: string, password: string): P
       body: JSON.stringify({ name: cleanedName, email: cleanedEmail, password }),
     })
   } catch {
-    throw new AuthApiError('Cannot reach the server.', { isNetworkError: true })
+    throw new AuthApiError('Cannot reach the server.', {
+      isNetworkError: true,
+      code: 'NETWORK_ERROR',
+    })
   }
 
   if (response.status === 201) {
     return (await response.json()) as AuthUser
   }
 
-  if (response.status === 409) {
-    throw new AuthApiError('An account with this email already exists.', { status: 409 })
-  }
-
-  if (response.status === 422) {
-    try {
-      const errorJson = (await response.json()) as { detail?: Array<{ msg: string }> | string }
-      if (Array.isArray(errorJson.detail) && errorJson.detail.length > 0) {
-        throw new AuthApiError(errorJson.detail[0]?.msg ?? 'Invalid registration data.', { status: 422 })
-      }
-    } catch {
-      // Fall through to general error
-    }
-    throw new AuthApiError('Invalid registration data.', { status: 422 })
-  }
-
-  throw new AuthApiError('Something went wrong. Try again.', { status: response.status })
+  const errInfo = await parseApiError(response, 'Registration failed. Please try again.')
+  throw new AuthApiError(errInfo.message, {
+    status: response.status,
+    code: errInfo.code,
+    requestId: errInfo.requestId,
+  })
 }
 
 export async function login(email: string, password: string): Promise<AuthUser> {
@@ -140,7 +126,11 @@ export async function login(email: string, password: string): Promise<AuthUser> 
       return mockSessionUser
     }
 
-    throw new AuthApiError('Invalid email or password.', { status: 401 })
+    throw new AuthApiError('Invalid email or password.', {
+      status: 401,
+      code: 'INVALID_CREDENTIALS',
+      requestId: `req-mock-${Date.now()}`,
+    })
   }
 
   let response: Response
@@ -155,28 +145,28 @@ export async function login(email: string, password: string): Promise<AuthUser> 
       body: JSON.stringify({ email: cleanedEmail, password }),
     })
   } catch {
-    throw new AuthApiError('Cannot reach the server.', { isNetworkError: true })
+    throw new AuthApiError('Cannot reach the server.', {
+      isNetworkError: true,
+      code: 'NETWORK_ERROR',
+    })
   }
 
   if (response.status === 200) {
     return (await response.json()) as AuthUser
   }
 
-  if (response.status === 401) {
-    throw new AuthApiError('Invalid email or password.', { status: 401 })
-  }
+  const retryHeader = response.headers.get('Retry-After')
+  const retrySeconds = retryHeader ? parseInt(retryHeader, 10) : undefined
+  const validRetry =
+    retrySeconds && !Number.isNaN(retrySeconds) && retrySeconds > 0 ? retrySeconds : undefined
 
-  if (response.status === 429) {
-    const retryHeader = response.headers.get('Retry-After')
-    const retrySeconds = retryHeader ? parseInt(retryHeader, 10) : 60
-    const validRetry = !Number.isNaN(retrySeconds) && retrySeconds > 0 ? retrySeconds : 60
-    throw new AuthApiError(`Too many attempts. Try again in ${validRetry}s.`, {
-      status: 429,
-      retryAfter: validRetry,
-    })
-  }
-
-  throw new AuthApiError('Something went wrong. Try again.', { status: response.status })
+  const errInfo = await parseApiError(response, 'Sign in failed. Please try again.')
+  throw new AuthApiError(errInfo.message, {
+    status: response.status,
+    code: errInfo.code,
+    requestId: errInfo.requestId,
+    retryAfter: validRetry,
+  })
 }
 
 export async function me(): Promise<AuthUser> {
@@ -185,7 +175,11 @@ export async function me(): Promise<AuthUser> {
       return mockSessionUser
     }
     notifyUnauthorized()
-    throw new AuthApiError('Unauthorized', { status: 401 })
+    throw new AuthApiError('Authentication required.', {
+      status: 401,
+      code: 'AUTHENTICATION_REQUIRED',
+      requestId: `req-mock-${Date.now()}`,
+    })
   }
 
   let response: Response
@@ -195,7 +189,10 @@ export async function me(): Promise<AuthUser> {
       credentials: 'include',
     })
   } catch {
-    throw new AuthApiError('Cannot reach the server.', { isNetworkError: true })
+    throw new AuthApiError('Cannot reach the server.', {
+      isNetworkError: true,
+      code: 'NETWORK_ERROR',
+    })
   }
 
   if (response.status === 200) {
@@ -204,10 +201,20 @@ export async function me(): Promise<AuthUser> {
 
   if (response.status === 401) {
     notifyUnauthorized()
-    throw new AuthApiError('Unauthorized', { status: 401 })
+    const errInfo = await parseApiError(response, 'Authentication required.')
+    throw new AuthApiError(errInfo.message, {
+      status: 401,
+      code: errInfo.code,
+      requestId: errInfo.requestId,
+    })
   }
 
-  throw new AuthApiError('Something went wrong. Try again.', { status: response.status })
+  const errInfo = await parseApiError(response, 'Failed to retrieve profile.')
+  throw new AuthApiError(errInfo.message, {
+    status: response.status,
+    code: errInfo.code,
+    requestId: errInfo.requestId,
+  })
 }
 
 export async function logout(): Promise<void> {
@@ -227,7 +234,10 @@ export async function logout(): Promise<void> {
       },
     })
   } catch {
-    throw new AuthApiError('Cannot reach the server.', { isNetworkError: true })
+    throw new AuthApiError('Cannot reach the server.', {
+      isNetworkError: true,
+      code: 'NETWORK_ERROR',
+    })
   }
 
   if (response.status === 204 || response.status === 401) {
@@ -235,5 +245,10 @@ export async function logout(): Promise<void> {
     return
   }
 
-  throw new AuthApiError('Something went wrong. Try again.', { status: response.status })
+  const errInfo = await parseApiError(response, 'Logout failed.')
+  throw new AuthApiError(errInfo.message, {
+    status: response.status,
+    code: errInfo.code,
+    requestId: errInfo.requestId,
+  })
 }

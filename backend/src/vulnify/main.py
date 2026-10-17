@@ -5,11 +5,22 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
 from vulnify.config import Settings, get_settings
-from vulnify.routers import admin, auth, health
+from vulnify.errors import (
+    CSRF_ERROR,
+    AppException,
+    app_exception_handler,
+    create_error_response,
+    http_exception_handler_override,
+    unhandled_exception_handler,
+    validation_exception_handler,
+)
+from vulnify.logging import RequestIdMiddleware, setup_logging
+from vulnify.routers import admin, auth, health, projects, vulnerabilities
 
 CSRF_PROTECTED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -26,9 +37,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             # 1. Require X-Requested-With: vulnify header
             x_requested_with = request.headers.get("x-requested-with")
             if not x_requested_with or x_requested_with.strip().lower() != "vulnify":
-                return JSONResponse(
+                return create_error_response(
+                    request=request,
                     status_code=status.HTTP_403_FORBIDDEN,
-                    content={"detail": "Missing or invalid X-Requested-With header"},
+                    code=CSRF_ERROR,
+                    message="Missing or invalid X-Requested-With header.",
                 )
 
             # 2. If Origin header is present, it must be in ALLOWED_ORIGINS
@@ -37,9 +50,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 cleaned_origin = origin.rstrip("/")
                 allowed_cleaned = [o.rstrip("/") for o in self.settings.allowed_origins_list]
                 if cleaned_origin not in allowed_cleaned:
-                    return JSONResponse(
+                    return create_error_response(
+                        request=request,
                         status_code=status.HTTP_403_FORBIDDEN,
-                        content={"detail": "Untrusted origin"},
+                        code=CSRF_ERROR,
+                        message="Untrusted origin.",
                     )
 
         return await call_next(request)
@@ -61,6 +76,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Application factory for Vulnify backend."""
     app_settings = settings or get_settings()
+    setup_logging()
 
     app = FastAPI(
         title="Vulnify API",
@@ -69,22 +85,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
-    # 1. CORS Middleware: explicit origins only, allow_credentials=True, never "*"
+    # 1. CSRF Middleware
+    app.add_middleware(CSRFMiddleware, settings=app_settings)
+
+    # 2. CORS Middleware: explicit origins only, allow_credentials=True, never "*"
     app.add_middleware(
         CORSMiddleware,
         allow_origins=app_settings.allowed_origins_list,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
     )
 
-    # 2. CSRF Middleware
-    app.add_middleware(CSRFMiddleware, settings=app_settings)
+    # 3. Request ID and Access Logging Middleware (outermost)
+    app.add_middleware(RequestIdMiddleware)
 
-    # 3. Mount Routers
+    # 4. Centralized exception handlers for standardized API error responses
+    app.add_exception_handler(AppException, app_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler_override)
+    from fastapi.exceptions import RequestValidationError
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(Exception, unhandled_exception_handler)
+
+    # 5. Mount Routers
     app.include_router(auth.router)
     app.include_router(health.router)
     app.include_router(admin.router)
+    app.include_router(projects.router)
+    app.include_router(vulnerabilities.router)
 
     return app
 

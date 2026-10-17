@@ -4,6 +4,11 @@ from fastapi import Depends, HTTPException, Request, status
 import jwt
 
 from vulnify.config import Settings, get_settings
+from vulnify.graph.project_repository import (
+    IProjectRepository,
+    ProjectRecord,
+    get_project_repository,
+)
 from vulnify.graph.user_repository import IUserRepository, get_user_repository
 from vulnify.schemas import UserResponse
 from vulnify.security import decode_session_jwt
@@ -74,3 +79,18 @@ async def require_admin(
             detail="Administrator access required.",
         )
     return current_user
+
+
+async def get_valid_project(
+    project_id: str,
+    repo: IProjectRepository = Depends(get_project_repository),
+) -> ProjectRecord:
+    """Validate that a project exists by ID or raise 404 Not Found."""
+    clean_id = project_id.strip()
+    project = repo.get_by_id(clean_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with ID '{clean_id}' not found.",
+        )
+    return project

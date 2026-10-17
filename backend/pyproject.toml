@@ -11,6 +11,8 @@ dependencies = [
     "pydantic-settings>=2.4.0",
     "argon2-cffi>=23.1.0",
     "pyjwt>=2.9.0",
+    "packaging>=24.0",
+    "semver>=3.0.0",
 ]
 
 [project.optional-dependencies]

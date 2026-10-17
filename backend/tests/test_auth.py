@@ -46,7 +46,11 @@ async def test_duplicate_registration_returns_409_conflict(client: AsyncClient) 
 
     res2 = await client.post("/api/auth/register", json=SAMPLE_USER)
     assert res2.status_code == 409
-    assert "already exists" in res2.json()["detail"]
+    data = res2.json()
+    assert data["code"] == "CONFLICT"
+    assert "already exists" in data["message"]
+    assert "request_id" in data
+    assert res2.headers["X-Request-ID"] == data["request_id"]
 
 
 @pytest.mark.asyncio
@@ -107,7 +111,14 @@ async def test_wrong_email_and_wrong_password_return_identical_401(client: Async
 
     assert res_wrong_email.status_code == 401
     assert res_wrong_pass.status_code == 401
-    assert res_wrong_email.json() == res_wrong_pass.json() == {"detail": "Invalid email or password."}
+    data_email = res_wrong_email.json()
+    data_pass = res_wrong_pass.json()
+    assert data_email["code"] == data_pass["code"] == "INVALID_CREDENTIALS"
+    assert data_email["message"] == data_pass["message"] == "Invalid email or password."
+    assert "request_id" in data_email and "request_id" in data_pass
+    assert data_email["request_id"] != data_pass["request_id"]
+    assert res_wrong_email.headers["X-Request-ID"] == data_email["request_id"]
+    assert res_wrong_pass.headers["X-Request-ID"] == data_pass["request_id"]
 
 
 @pytest.mark.asyncio
@@ -141,7 +152,10 @@ async def test_role_based_access_control(
     # Standard user visits admin endpoint -> 403 Forbidden
     admin_res = await client.get("/api/admin/status")
     assert admin_res.status_code == 403
-    assert "Administrator access required" in admin_res.json()["detail"]
+    admin_data = admin_res.json()
+    assert admin_data["code"] == "FORBIDDEN"
+    assert "Administrator access required" in admin_data["message"]
+    assert admin_res.headers["X-Request-ID"] == admin_data["request_id"]
 
     # Deliberately promote user to admin in repository
     mock_user_repo.update_role(SAMPLE_USER["email"], "admin")
@@ -189,7 +203,10 @@ async def test_csrf_protection_and_logout(client: AsyncClient, app) -> None:
     async with AsyncClient(transport=transport, base_url="http://test") as raw_client:
         res = await raw_client.post("/api/auth/register", json=SAMPLE_USER)
         assert res.status_code == 403
-        assert "X-Requested-With" in res.json()["detail"]
+        csrf_data = res.json()
+        assert csrf_data["code"] == "CSRF_ERROR"
+        assert "X-Requested-With" in csrf_data["message"]
+        assert res.headers["X-Request-ID"] == csrf_data["request_id"]
 
     # 2. Register with CSRF header
     await client.post("/api/auth/register", json=SAMPLE_USER)

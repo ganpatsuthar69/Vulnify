@@ -39,13 +39,45 @@ class GraphClient:
         return self._graph
 
     def _init_schema(self) -> None:
-        """Create necessary indexes for User lookup properties."""
+        """Create necessary indexes for User and Project lookup properties."""
         try:
             self._graph.query("CREATE INDEX FOR (u:User) ON (u.email)")
         except Exception:
             pass
         try:
             self._graph.query("CREATE INDEX FOR (u:User) ON (u.id)")
+        except Exception:
+            pass
+        try:
+            self._graph.query("CREATE INDEX FOR (p:Project) ON (p.id)")
+        except Exception:
+            pass
+        try:
+            self._graph.query("CREATE INDEX FOR (p:Project) ON (p.normalized_name)")
+        except Exception:
+            pass
+        try:
+            self._graph.query("CREATE INDEX FOR (s:Service) ON (s.id)")
+        except Exception:
+            pass
+        try:
+            self._graph.query("CREATE INDEX FOR (pv:PackageVersion) ON (pv.id)")
+        except Exception:
+            pass
+        try:
+            self._graph.query("CREATE INDEX FOR (pv:PackageVersion) ON (pv.name)")
+        except Exception:
+            pass
+        try:
+            self._graph.query("CREATE INDEX FOR (ie:ImportEvent) ON (ie.id)")
+        except Exception:
+            pass
+        try:
+            self._graph.query("CREATE INDEX FOR (ie:ImportEvent) ON (ie.sha256_hash)")
+        except Exception:
+            pass
+        try:
+            self._graph.query("CREATE INDEX FOR (v:Vulnerability) ON (v.id)")
         except Exception:
             pass
 

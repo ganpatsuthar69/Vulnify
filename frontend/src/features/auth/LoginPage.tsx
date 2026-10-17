@@ -1,8 +1,10 @@
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate, useLocation, useNavigate, type Location } from 'react-router'
 import { AuthApiError } from './authApi'
 import { useAuth } from './AuthProvider'
+import { PasswordInput } from '@/shared/components/PasswordInput'
+import { SessionLoader } from '@/shared/components/SessionLoader'
 import vulnifyLogo from '@/assets/vulnify-logo.png'
 
 export function LoginPage() {
@@ -12,8 +14,8 @@ export function LoginPage() {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [errorRequestId, setErrorRequestId] = useState<string | null>(null)
   const [emailInvalid, setEmailInvalid] = useState(false)
   const [passwordInvalid, setPasswordInvalid] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -59,18 +61,7 @@ export function LoginPage() {
 
   // If checking authentication status, show accessible loader
   if (status === 'checking') {
-    return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="flex min-h-screen flex-col items-center justify-center bg-[#0b121a] text-slate-300"
-      >
-        <Loader2 className="h-8 w-8 animate-spin text-sky-400" aria-hidden="true" />
-        <span className="mt-4 text-sm font-medium text-slate-300">
-          Checking security session...
-        </span>
-      </div>
-    )
+    return <SessionLoader />
   }
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -96,6 +87,7 @@ export function LoginPage() {
 
     setIsSubmitting(true)
     setErrorMessage(null)
+    setErrorRequestId(null)
 
     try {
       await login(trimmedEmail, password)
@@ -104,6 +96,9 @@ export function LoginPage() {
       setPassword('')
 
       if (err instanceof AuthApiError) {
+        if (err.requestId) {
+          setErrorRequestId(err.requestId)
+        }
         if (err.status === 401) {
           setErrorMessage('Invalid email or password.')
         } else if (err.status === 429) {
@@ -181,41 +176,18 @@ export function LoginPage() {
             <label htmlFor="password" className="block text-xs font-medium uppercase tracking-wider text-slate-300">
               Password
             </label>
-            <div className="relative mt-1.5">
-              <input
-                id="password"
-                name="password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                maxLength={128}
-                required
-                aria-required="true"
-                aria-invalid={passwordInvalid ? 'true' : 'false'}
-                aria-describedby={errorMessage ? 'login-error-region' : undefined}
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value)
-                  if (passwordInvalid) setPasswordInvalid(false)
-                }}
-                placeholder="••••••••••••"
-                className={`block w-full rounded-lg border bg-[#0b121a] px-3.5 py-2.5 pr-11 text-sm text-slate-100 placeholder-slate-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                  passwordInvalid ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-700/80 hover:border-slate-600'
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                aria-pressed={showPassword}
-                className="absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-400 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] rounded-r-lg"
-              >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" aria-hidden="true" />
-                ) : (
-                  <Eye className="h-4 w-4" aria-hidden="true" />
-                )}
-              </button>
-            </div>
+            <PasswordInput
+              id="password"
+              name="password"
+              autoComplete="current-password"
+              isInvalid={passwordInvalid}
+              errorRegionId={errorMessage ? 'login-error-region' : undefined}
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                if (passwordInvalid) setPasswordInvalid(false)
+              }}
+            />
           </div>
 
           {/* Error handling: an aria-live="polite" region above the button */}
@@ -224,7 +196,16 @@ export function LoginPage() {
             aria-live="polite"
             className="min-h-[1.5rem] text-sm font-medium text-rose-400"
           >
-            {errorMessage ? <p>{errorMessage}</p> : null}
+            {errorMessage ? (
+              <div>
+                <p>{errorMessage}</p>
+                {errorRequestId && (
+                  <p className="mt-1 font-mono text-xs text-slate-400">
+                    Request ID: {errorRequestId}
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>
 
           {/* Submit button */}

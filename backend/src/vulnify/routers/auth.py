@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from vulnify.config import Settings, get_settings
 from vulnify.dependencies import COOKIE_SESSION_NAME, require_auth
-from vulnify.graph.user_repository import IUserRepository, get_user_repository
+from vulnify.graph.user_repository import (
+    IUserRepository,
+    UserRecord,
+    get_user_repository,
+)
 from vulnify.rate_limiter import login_rate_limiter
 from vulnify.schemas import LoginRequest, RegisterRequest, UserResponse
 from vulnify.security import (
@@ -24,6 +28,36 @@ def get_client_ip(request: Request) -> str:
     if request.client and request.client.host:
         return request.client.host
     return "127.0.0.1"
+
+
+def _issue_session_cookie(
+    response: Response,
+    user_record: UserRecord,
+    settings: Settings,
+) -> UserResponse:
+    """Issue authenticated session cookie and return UserResponse."""
+    token = create_session_jwt(
+        user_id=user_record.id,
+        email=user_record.email,
+        role=user_record.role,
+        secret=settings.SESSION_SECRET,
+        ttl_minutes=settings.SESSION_TTL_MINUTES,
+    )
+    response.set_cookie(
+        key=COOKIE_SESSION_NAME,
+        value=token,
+        httponly=True,
+        path="/",
+        samesite="lax",
+        secure=settings.COOKIE_SECURE,
+        max_age=settings.SESSION_TTL_MINUTES * 60,
+    )
+    return UserResponse(
+        id=user_record.id,
+        email=user_record.email,
+        name=user_record.name,
+        role=user_record.role,
+    )
 
 
 @router.post(
@@ -59,30 +93,7 @@ async def register(
     )
 
     # 4. Issue authenticated session cookie on successful registration
-    token = create_session_jwt(
-        user_id=user_record.id,
-        email=user_record.email,
-        role=user_record.role,
-        secret=settings.SESSION_SECRET,
-        ttl_minutes=settings.SESSION_TTL_MINUTES,
-    )
-
-    response.set_cookie(
-        key=COOKIE_SESSION_NAME,
-        value=token,
-        httponly=True,
-        path="/",
-        samesite="lax",
-        secure=settings.COOKIE_SECURE,
-        max_age=settings.SESSION_TTL_MINUTES * 60,
-    )
-
-    return UserResponse(
-        id=user_record.id,
-        email=user_record.email,
-        name=user_record.name,
-        role=user_record.role,
-    )
+    return _issue_session_cookie(response, user_record, settings)
 
 
 @router.post(
@@ -129,31 +140,8 @@ async def login(
     # 4. Successful authentication: reset rate limiter for this user/ip
     login_rate_limiter.record_success(client_ip, credentials.email)
 
-    # 5. Create and set session JWT cookie
-    token = create_session_jwt(
-        user_id=user_record.id,
-        email=user_record.email,
-        role=user_record.role,
-        secret=settings.SESSION_SECRET,
-        ttl_minutes=settings.SESSION_TTL_MINUTES,
-    )
-
-    response.set_cookie(
-        key=COOKIE_SESSION_NAME,
-        value=token,
-        httponly=True,
-        path="/",
-        samesite="lax",
-        secure=settings.COOKIE_SECURE,
-        max_age=settings.SESSION_TTL_MINUTES * 60,
-    )
-
-    return UserResponse(
-        id=user_record.id,
-        email=user_record.email,
-        name=user_record.name,
-        role=user_record.role,
-    )
+    # 5. Issue authenticated session cookie on successful login
+    return _issue_session_cookie(response, user_record, settings)
 
 
 @router.get(
