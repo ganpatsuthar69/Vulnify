@@ -14,8 +14,23 @@ import { useProjects } from '@/features/projects/ProjectProvider'
 import { CreateProjectModal } from '@/features/projects/CreateProjectModal'
 import type { SupportedEcosystem } from '@/features/projects/types'
 
+function getEcosystemBadgeClass(ecosystem: string): string {
+  switch (ecosystem) {
+    case 'npm':
+      return 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+    case 'PyPI':
+      return 'bg-indigo-500/15 border border-indigo-500/30 text-indigo-300'
+    case 'Cargo':
+      return 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
+    case 'Go':
+      return 'bg-cyan-500/15 border border-cyan-500/30 text-cyan-300'
+    default:
+      return 'bg-sky-500/15 border border-sky-500/30 text-sky-300'
+  }
+}
+
 export function ProjectsPage() {
-  const { projects, activeProject, selectProject, isLoading } = useProjects()
+  const { projects, activeProject, selectProject, isLoading, capabilities } = useProjects()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [ecosystemFilter, setEcosystemFilter] = useState<'ALL' | SupportedEcosystem>('ALL')
@@ -80,8 +95,18 @@ export function ProjectsPage() {
             className="rounded-lg border border-slate-800 bg-[#0f1822] px-3 py-2 text-xs text-slate-300 focus:border-sky-500 focus:outline-none"
           >
             <option value="ALL">All Ecosystems</option>
-            <option value="npm">npm (JavaScript)</option>
-            <option value="PyPI">PyPI (Python)</option>
+            {capabilities.length > 0 ? (
+              capabilities.map((cap) => (
+                <option key={cap.id} value={cap.id}>
+                  {cap.display_name}
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="npm">npm (JavaScript)</option>
+                <option value="PyPI">PyPI (Python)</option>
+              </>
+            )}
           </select>
         </div>
       </div>
@@ -135,11 +160,9 @@ export function ProjectsPage() {
                     </div>
 
                     <span
-                      className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                        p.ecosystem === 'npm'
-                          ? 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
-                          : 'bg-indigo-500/15 border border-indigo-500/30 text-indigo-300'
-                      }`}
+                      className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getEcosystemBadgeClass(
+                        p.ecosystem,
+                      )}`}
                     >
                       {p.ecosystem}
                     </span>

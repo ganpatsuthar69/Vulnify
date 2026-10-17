@@ -71,13 +71,22 @@ class HealthResponse(BaseModel):
     status: str = "healthy"
 
 
-SUPPORTED_ECOSYSTEMS: tuple[str, ...] = ("npm", "PyPI")
-SupportedEcosystem = Literal["npm", "PyPI"]
+from vulnify.parsers.registry import (
+    EcosystemCapabilitiesResponse,
+    EcosystemCapability,
+    ImportFieldDefinition,
+    ImportMethodCapability,
+    get_ecosystem_registry,
+    get_supported_ecosystem_ids,
+)
+
+SUPPORTED_ECOSYSTEMS: tuple[str, ...] = ("npm", "PyPI", "Cargo", "Go")
+SupportedEcosystem = str
 
 
 class ProjectCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Project name")
-    ecosystem: str = Field(..., description="Package ecosystem (e.g. npm, PyPI)")
+    ecosystem: str = Field(..., description="Package ecosystem (e.g. npm, PyPI, Cargo, Go)")
     description: str | None = Field(default=None, max_length=500, description="Optional project description")
 
     @field_validator("name")
@@ -92,10 +101,10 @@ class ProjectCreateRequest(BaseModel):
     @classmethod
     def validate_ecosystem(cls, v: str) -> str:
         cleaned = v.strip()
-        canonical_map = {eco.lower(): eco for eco in SUPPORTED_ECOSYSTEMS}
-        matched = canonical_map.get(cleaned.lower())
+        registry = get_ecosystem_registry()
+        matched = registry.get_canonical_ecosystem_name(cleaned)
         if not matched:
-            supported_str = ", ".join(SUPPORTED_ECOSYSTEMS)
+            supported_str = ", ".join(registry.get_supported_ecosystem_ids())
             raise ValueError(
                 f"Unsupported ecosystem '{cleaned}'. Supported ecosystems are: {supported_str}."
             )
@@ -126,15 +135,16 @@ class ErrorResponse(BaseModel):
 
 
 SERVICE_NAME_REGEX = re.compile(r"^[a-zA-Z0-9_.-]+$")
-SUPPORTED_LOCKFILES: dict[str, list[str]] = {
-    "npm": ["package-lock.json"],
-}
 
 
 class LockfileImportRequest(BaseModel):
     service_name: str = Field(..., min_length=1, max_length=100, description="Named service within the project")
-    filename: str = Field(..., min_length=1, max_length=255, description="Original lockfile filename")
-    content: str = Field(..., min_length=1, description="Lockfile content as UTF-8 string")
+    filename: str = Field(..., min_length=1, max_length=255, description="Original primary file filename")
+    content: str = Field(..., min_length=1, description="Primary file content as UTF-8 string")
+    secondary_filename: str | None = Field(default=None, max_length=255, description="Optional paired secondary filename (e.g. go.sum)")
+    secondary_content: str | None = Field(default=None, description="Optional paired secondary file content")
+    import_method: str | None = Field(default=None, max_length=50, description="Optional explicit import method ID")
+    metadata: dict[str, Any] | None = Field(default=None, description="Optional method-specific metadata")
 
     @field_validator("service_name")
     @classmethod
@@ -157,6 +167,10 @@ class LockfileImportRequest(BaseModel):
         return cleaned
 
 
+# Modern alias
+DependencyImportRequest = LockfileImportRequest
+
+
 class ImportSummaryResponse(BaseModel):
     project_id: str = Field(..., description="Identifier of associated project")
     service_name: str = Field(..., description="Identifier or name of associated service")
@@ -172,6 +186,11 @@ class ImportSummaryResponse(BaseModel):
     errors: list[str] = Field(default_factory=list, description="Actionable errors encountered during import")
     status: Literal["completed", "partially_completed", "failed"] = Field(..., description="Overall import status")
     imported_at: int = Field(..., description="Unix timestamp of the import event")
+    fidelity: str = Field(default="exact_lockfile", description="Resolution fidelity classification")
+    ecosystem: str = Field(default="npm", description="Package ecosystem")
+    import_method: str = Field(default="lockfile", description="Import method used")
+    secondary_filename: str | None = Field(default=None, description="Optional secondary filename")
+    job_id: str | None = Field(default=None, description="Associated IngestionJob identifier")
 
 
 class OsvImportSummaryResponse(BaseModel):
@@ -191,6 +210,7 @@ class OsvImportSummaryResponse(BaseModel):
     status: Literal["completed", "partial_failure", "failed", "skipped"] = Field(..., description="Overall ingestion status")
     errors: list[str] = Field(default_factory=list, description="Descriptions of any failures or issues")
     duration_ms: float = Field(..., description="Total duration of the ingestion operation in milliseconds")
+    job_id: str | None = Field(default=None, description="Associated IngestionJob identifier")
 
 
 class ProjectAdvisoryResponse(BaseModel):
@@ -243,6 +263,7 @@ class ProjectMatchResponse(BaseModel):
     duration_ms: float
     status: Literal["completed", "partial_failure", "failed"]
     results: list[VersionMatchResultResponse] = Field(default_factory=list)
+    job_id: str | None = Field(default=None, description="Associated IngestionJob identifier")
 
 
 class VulnerabilityFindingResponse(BaseModel):
@@ -275,3 +296,70 @@ class PackageVersionResponse(BaseModel):
     version: str
     ecosystem: str
     purl: str
+
+
+# =====================================================================
+# US-105: Ingestion Jobs & History Schemas
+# =====================================================================
+
+JobStatusLiteral = Literal["queued", "running", "succeeded", "partial", "failed"]
+JobTypeLiteral = Literal["dependency_import", "osv_sync", "version_matching"]
+
+
+class IngestionJobResponse(BaseModel):
+    id: str = Field(..., description="Unique ingestion job identifier")
+    project_id: str = Field(..., description="Project workspace identifier")
+    job_type: JobTypeLiteral = Field(..., description="Category of ingestion job")
+    status: JobStatusLiteral = Field(..., description="Lifecycle status")
+    stage: str = Field(default="Queued", description="Human-readable execution stage or message")
+    service_id: str | None = Field(default=None, description="Target service ID if scoped")
+    service_name: str | None = Field(default=None, description="Target service name if scoped")
+    processed_items: int = Field(default=0, description="Items processed so far")
+    total_items: int | None = Field(default=None, description="Total expected items (null if indeterminate)")
+    percentage: float | None = Field(default=None, description="Progress percentage 0-100 (null if indeterminate)")
+    discovered_items: int = Field(default=0, description="Items discovered during inspection")
+    created_items: int = Field(default=0, description="New entities created in graph")
+    updated_items: int = Field(default=0, description="Existing entities updated in graph")
+    reused_items: int = Field(default=0, description="Existing entities reused without mutation")
+    skipped_items: int = Field(default=0, description="Items skipped or ignored")
+    failed_items: int = Field(default=0, description="Items that failed processing")
+    error_summary: str | None = Field(default=None, description="Safe, actionable error summary")
+    errors: list[str] = Field(default_factory=list, description="Actionable failure items")
+    warnings: list[str] = Field(default_factory=list, description="Actionable warnings")
+    retry_eligible: bool = Field(default=False, description="Whether this job may be retried")
+    retry_of_job_id: str | None = Field(default=None, description="Previous job ID if this is a retry")
+    created_at: int = Field(..., description="UTC Unix timestamp of creation")
+    started_at: int | None = Field(default=None, description="UTC Unix timestamp when execution began")
+    completed_at: int | None = Field(default=None, description="UTC Unix timestamp when execution terminated")
+    duration_ms: float | None = Field(default=None, description="Total execution duration in milliseconds")
+    initiated_by: str | None = Field(default=None, description="Operator user identifier or email")
+    filename: str | None = Field(default=None, description="Primary imported filename")
+    secondary_filename: str | None = Field(default=None, description="Secondary paired filename")
+    sha256_hash: str | None = Field(default=None, description="SHA-256 integrity digest")
+    ecosystem: str | None = Field(default=None, description="Ecosystem identifier")
+    import_method: str | None = Field(default=None, description="Import method used")
+    fidelity: str | None = Field(default=None, description="Resolution fidelity classification")
+
+
+class IngestionJobSummaryStats(BaseModel):
+    total_runs: int = Field(default=0, description="Total number of jobs in project scope")
+    running_runs: int = Field(default=0, description="Currently active running or queued jobs")
+    succeeded_runs: int = Field(default=0, description="Completed jobs with succeeded status")
+    failed_runs: int = Field(default=0, description="Jobs that terminated with failed status")
+    partial_runs: int = Field(default=0, description="Jobs that completed with partial status")
+
+
+class IngestionJobListResponse(BaseModel):
+    items: list[IngestionJobResponse] = Field(default_factory=list, description="Paginated job records")
+    total: int = Field(..., description="Total matching job records")
+    page: int = Field(..., description="Current page number (1-indexed)")
+    page_size: int = Field(..., description="Items per page")
+    total_pages: int = Field(..., description="Total pages available")
+    summary_stats: IngestionJobSummaryStats = Field(..., description="Project-wide run summary statistics")
+
+
+class JobRetryResponse(BaseModel):
+    message: str = Field(..., description="Confirmation message")
+    original_job_id: str = Field(..., description="Identifier of the original job")
+    new_job: IngestionJobResponse = Field(..., description="The newly queued retry job record")
+

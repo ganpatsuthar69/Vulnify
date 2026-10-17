@@ -1,7 +1,7 @@
 """Application settings and database configuration using pydantic-settings."""
 
 from functools import lru_cache
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,17 +25,43 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # Ingestion Configuration
-    MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB limit for lockfile uploads
+    DEPENDENCY_IMPORT_MAX_FILE_SIZE_MB: int = 10
+    DEPENDENCY_IMPORT_MAX_PACKAGES: int = 5000
+    DEPENDENCY_IMPORT_BATCH_SIZE: int = 500
+    MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024  # Derived from DEPENDENCY_IMPORT_MAX_FILE_SIZE_MB
 
     # OSV Advisory Integration Configuration
     OSV_ENABLED: bool = True
     OSV_API_BASE_URL: str = "https://api.osv.dev"
     OSV_API_TIMEOUT_SECONDS: int = 15
+    OSV_REQUEST_TIMEOUT_SECONDS: int | None = None  # Alias for OSV_API_TIMEOUT_SECONDS
     OSV_API_MAX_RETRIES: int = 3
+    OSV_MAX_RETRIES: int | None = None  # Alias for OSV_API_MAX_RETRIES
     OSV_API_BACKOFF_BASE_SECONDS: float = 1.0
     OSV_CACHE_TTL_SECONDS: int = 86400
     OSV_MAX_CONCURRENT_REQUESTS: int = 5
     OSV_BATCH_SIZE: int = 100
+
+    @field_validator("DEPENDENCY_IMPORT_MAX_FILE_SIZE_MB")
+    @classmethod
+    def validate_max_file_size_mb(cls, v: int) -> int:
+        if v <= 0 or v > 100:
+            raise ValueError("DEPENDENCY_IMPORT_MAX_FILE_SIZE_MB must be between 1 and 100 MB.")
+        return v
+
+    @field_validator("DEPENDENCY_IMPORT_MAX_PACKAGES")
+    @classmethod
+    def validate_max_packages(cls, v: int) -> int:
+        if v <= 0 or v > 100000:
+            raise ValueError("DEPENDENCY_IMPORT_MAX_PACKAGES must be between 1 and 100,000.")
+        return v
+
+    @field_validator("DEPENDENCY_IMPORT_BATCH_SIZE")
+    @classmethod
+    def validate_import_batch_size(cls, v: int) -> int:
+        if v <= 0 or v > 5000:
+            raise ValueError("DEPENDENCY_IMPORT_BATCH_SIZE must be between 1 and 5,000.")
+        return v
 
     @field_validator("SESSION_SECRET")
     @classmethod
@@ -87,6 +113,15 @@ class Settings(BaseSettings):
         if v <= 0:
             raise ValueError("OSV_BATCH_SIZE must be positive.")
         return v
+
+    @model_validator(mode="after")
+    def sync_derived_settings(self) -> "Settings":
+        self.MAX_UPLOAD_SIZE_BYTES = self.DEPENDENCY_IMPORT_MAX_FILE_SIZE_MB * 1024 * 1024
+        if self.OSV_REQUEST_TIMEOUT_SECONDS is not None:
+            self.OSV_API_TIMEOUT_SECONDS = self.OSV_REQUEST_TIMEOUT_SECONDS
+        if self.OSV_MAX_RETRIES is not None:
+            self.OSV_API_MAX_RETRIES = self.OSV_MAX_RETRIES
+        return self
 
     @property
     def allowed_origins_list(self) -> list[str]:

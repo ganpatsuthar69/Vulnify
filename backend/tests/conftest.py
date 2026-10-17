@@ -9,6 +9,7 @@ from vulnify.config import Settings, get_settings
 from vulnify.dependencies import COOKIE_SESSION_NAME
 from vulnify.graph.advisory_repository import InMemoryAdvisoryRepository, get_advisory_repository
 from vulnify.graph.dependency_repository import InMemoryDependencyRepository, get_dependency_repository
+from vulnify.graph.job_repository import InMemoryIngestionJobRepository, get_job_repository
 from vulnify.graph.project_repository import InMemoryProjectRepository, get_project_repository
 from vulnify.graph.user_repository import InMemoryUserRepository, get_user_repository
 from vulnify.graph.vulnerability_repository import (
@@ -80,6 +81,11 @@ def mock_vuln_repo() -> InMemoryVulnerabilityRepository:
 
 
 @pytest.fixture
+def mock_job_repo() -> InMemoryIngestionJobRepository:
+    return InMemoryIngestionJobRepository()
+
+
+@pytest.fixture
 def app(
     test_settings: Settings,
     mock_user_repo: InMemoryUserRepository,
@@ -87,6 +93,7 @@ def app(
     mock_dep_repo: InMemoryDependencyRepository,
     mock_advisory_repo: InMemoryAdvisoryRepository,
     mock_vuln_repo: InMemoryVulnerabilityRepository,
+    mock_job_repo: InMemoryIngestionJobRepository,
 ) -> FastAPI:
     test_app = create_app(settings=test_settings)
     test_app.dependency_overrides[get_settings] = lambda: test_settings
@@ -95,6 +102,7 @@ def app(
     test_app.dependency_overrides[get_dependency_repository] = lambda: mock_dep_repo
     test_app.dependency_overrides[get_advisory_repository] = lambda: mock_advisory_repo
     test_app.dependency_overrides[get_vulnerability_repository] = lambda: mock_vuln_repo
+    test_app.dependency_overrides[get_job_repository] = lambda: mock_job_repo
     return test_app
 
 
@@ -105,6 +113,7 @@ def reset_state(
     mock_dep_repo: InMemoryDependencyRepository,
     mock_advisory_repo: InMemoryAdvisoryRepository,
     mock_vuln_repo: InMemoryVulnerabilityRepository,
+    mock_job_repo: InMemoryIngestionJobRepository,
 ) -> None:
     login_rate_limiter.reset()
     mock_user_repo.clear()
@@ -114,6 +123,7 @@ def reset_state(
     mock_vuln_repo.package_advisories.clear()
     mock_vuln_repo.affects_edges.clear()
     mock_vuln_repo.vulnerabilities_data.clear()
+    mock_job_repo._jobs.clear()
 
 
 @pytest.fixture

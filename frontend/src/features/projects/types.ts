@@ -1,4 +1,53 @@
-export type SupportedEcosystem = 'npm' | 'PyPI'
+export type SupportedEcosystem = 'npm' | 'PyPI' | 'Cargo' | 'Go' | string
+
+export type FidelityLevel =
+  | 'exact_lockfile'
+  | 'checksum_verified'
+  | 'transitive_resolved'
+  | 'manifest_declared'
+  | 'partial_resolution'
+
+export interface ImportFieldDefinition {
+  name: string
+  label: string
+  type: 'string' | 'file' | 'boolean' | 'select'
+  required: boolean
+  description: string
+  placeholder?: string | null
+  default_value?: unknown
+  options?: string[] | null
+}
+
+export interface ImportMethodCapability {
+  id: string
+  name: string
+  description: string
+  fidelity: FidelityLevel
+  fidelity_description: string
+  accepted_filenames: string[]
+  accepted_extensions: string[]
+  requires_paired_file: boolean
+  paired_file_name?: string | null
+  paired_file_description?: string | null
+  fields: ImportFieldDefinition[]
+  limitations: string[]
+}
+
+export interface EcosystemCapability {
+  id: string
+  display_name: string
+  osv_ecosystem: string
+  supported_import_methods: ImportMethodCapability[]
+  max_file_size_bytes: number
+  max_packages: number
+  validation_rules: string[]
+  limitations: string[]
+}
+
+export interface EcosystemCapabilitiesResponse {
+  supported_ecosystems: string[]
+  capabilities: EcosystemCapability[]
+}
 
 export interface Project {
   id: string
@@ -39,6 +88,11 @@ export interface ImportSummary {
   errors: string[]
   status: 'completed' | 'partially_completed' | 'failed'
   imported_at: number
+  fidelity?: string
+  ecosystem?: string
+  import_method?: string
+  secondary_filename?: string | null
+  job_id?: string | null
 }
 
 // Helper alias for clarity
@@ -63,6 +117,7 @@ export interface OsvImportSummary {
   status: 'completed' | 'partial_failure' | 'failed' | 'skipped'
   errors: string[]
   duration_ms: number
+  job_id?: string | null
 }
 
 export interface ProjectAdvisory {
@@ -110,6 +165,78 @@ export interface ProjectMatchResponse {
   duration_ms: number
   status: 'completed' | 'partial_failure' | 'failed'
   results: VersionMatchResult[]
+  job_id?: string | null
+}
+
+// US-105: Ingestion Jobs and History Types
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed'
+
+export type JobType = 'dependency_import' | 'osv_sync' | 'version_matching'
+
+export interface IngestionJob {
+  id: string
+  project_id: string
+  job_type: JobType | string
+  status: JobStatus | string
+  stage?: string | null
+  service_id?: string | null
+  service_name?: string | null
+  processed_items: number
+  total_items?: number | null
+  percentage?: number | null
+  discovered_items: number
+  created_items: number
+  updated_items: number
+  reused_items: number
+  skipped_items: number
+  failed_items: number
+  error_summary?: string | null
+  errors: string[]
+  warnings: string[]
+  retry_eligible: boolean
+  retry_of_job_id?: string | null
+  created_at: number
+  started_at?: number | null
+  completed_at?: number | null
+  duration_ms?: number | null
+  initiated_by?: string | null
+  filename?: string | null
+  secondary_filename?: string | null
+  sha256_hash?: string | null
+  ecosystem?: string | null
+  import_method?: string | null
+  fidelity?: string | null
+}
+
+export interface IngestionJobSummaryStats {
+  total_runs: number
+  running_runs: number
+  succeeded_runs: number
+  failed_runs: number
+  partial_runs: number
+}
+
+export interface IngestionJobListResponse {
+  items: IngestionJob[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+  summary_stats: IngestionJobSummaryStats
+}
+
+export interface JobRetryResponse {
+  message: string
+  original_job_id: string
+  new_job: IngestionJob
+}
+
+export interface ListJobsFilterParams {
+  page?: number
+  page_size?: number
+  status?: string
+  job_type?: string
+  service_name?: string
 }
 
 export interface VulnerabilityFinding {

@@ -1,4 +1,4 @@
-import { useState, useRef, type ChangeEvent, type FormEvent } from 'react'
+import { useState, useRef, useEffect, type ChangeEvent, type FormEvent } from 'react'
 import {
   Upload,
   FileCode,
@@ -11,26 +11,104 @@ import {
   Database,
   X,
   FileCheck,
+  ShieldCheck,
+  FileText,
+  History,
 } from 'lucide-react'
-import { importLockfile, ProjectApiError } from '../projects/projectApi'
-import type { ImportSummary, Project } from '../projects/types'
+import { Link } from 'react-router'
+import { useProjects } from '../projects/ProjectProvider'
+import { importDependencies, ProjectApiError } from '../projects/projectApi'
+import type {
+  FidelityLevel,
+  ImportMethodCapability,
+  ImportSummary,
+  Project,
+} from '../projects/types'
 
 interface LockfileImportCardProps {
   project: Project
 }
 
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
+function getFidelityBadge(fidelity?: FidelityLevel | string) {
+  switch (fidelity) {
+    case 'exact_lockfile':
+      return {
+        label: 'Exact Lockfile',
+        color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+        dot: 'bg-emerald-400',
+      }
+    case 'checksum_verified':
+      return {
+        label: 'Checksum Verified',
+        color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
+        dot: 'bg-cyan-400',
+      }
+    case 'manifest_declared':
+      return {
+        label: 'Declared Manifest',
+        color: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+        dot: 'bg-amber-400',
+      }
+    case 'heuristic':
+      return {
+        label: 'Heuristic',
+        color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
+        dot: 'bg-indigo-400',
+      }
+    default:
+      return {
+        label: fidelity || 'Standard',
+        color: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
+        dot: 'bg-slate-400',
+      }
+  }
+}
 
 export function LockfileImportCard({ project }: LockfileImportCardProps) {
+  const { capabilities } = useProjects()
+
+  // Match ecosystem capability from backend registry
+  const capability = capabilities.find((c) => c.id === project.ecosystem)
+  const methods = capability?.supported_import_methods ?? []
+
+  const [selectedMethodId, setSelectedMethodId] = useState<string>('')
   const [serviceName, setServiceName] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [secondaryFile, setSecondaryFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [serverError, setServerError] = useState<{ message: string; requestId?: string } | null>(null)
   const [summary, setSummary] = useState<ImportSummary | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const primaryFileInputRef = useRef<HTMLInputElement>(null)
+  const secondaryFileInputRef = useRef<HTMLInputElement>(null)
+
+  // Initialize or reset method selection when project or methods change
+  useEffect(() => {
+    if (methods.length > 0) {
+      if (!selectedMethodId || !methods.some((m) => m.id === selectedMethodId)) {
+        setSelectedMethodId(methods[0]!.id)
+      }
+    }
+  }, [project.id, project.ecosystem, methods, selectedMethodId])
+
+  const activeMethod: ImportMethodCapability | undefined =
+    methods.find((m) => m.id === selectedMethodId) || methods[0]
+
+  const maxSizeBytes = capability?.max_file_size_bytes ?? 10 * 1024 * 1024
+  const maxMb = (maxSizeBytes / (1024 * 1024)).toFixed(0)
+
+  const handleMethodChange = (methodId: string) => {
+    setSelectedMethodId(methodId)
+    setSelectedFile(null)
+    setSecondaryFile(null)
+    setValidationError(null)
+    setServerError(null)
+    if (primaryFileInputRef.current) primaryFileInputRef.current.value = ''
+    if (secondaryFileInputRef.current) secondaryFileInputRef.current.value = ''
+  }
+
+  const handlePrimaryFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     setValidationError(null)
     setServerError(null)
@@ -40,31 +118,68 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
       return
     }
 
-    // Client-side extension validation
-    const lowerName = file.name.toLowerCase()
-    if (!lowerName.endsWith('.json')) {
-      setValidationError(
-        `File "${file.name}" is not a recognized JSON lockfile. For npm projects, "package-lock.json" is required.`,
-      )
+    if (activeMethod) {
+      const lowerName = file.name.toLowerCase()
+      const acceptedExts = activeMethod.accepted_extensions.map((ext) => ext.toLowerCase())
+      const acceptedFiles = activeMethod.accepted_filenames.map((fn) => fn.toLowerCase())
+
+      const hasValidExt = acceptedExts.some((ext) => lowerName.endsWith(ext))
+      const hasValidName = acceptedFiles.includes(lowerName)
+
+      if (!hasValidExt && !hasValidName) {
+        setValidationError(
+          `File "${file.name}" does not match the accepted formats for ${activeMethod.name}. Accepted filenames: ${activeMethod.accepted_filenames.join(', ')} (${activeMethod.accepted_extensions.join(', ')}).`,
+        )
+      }
     }
 
-    // Client-side file size validation
-    if (file.size > MAX_FILE_SIZE_BYTES) {
+    if (file.size > maxSizeBytes) {
       const mbSize = (file.size / (1024 * 1024)).toFixed(1)
-      setValidationError(
-        `File size (${mbSize} MB) exceeds the maximum allowed limit of 10 MB.`,
-      )
+      setValidationError(`File size (${mbSize} MB) exceeds maximum allowed limit of ${maxMb} MB.`)
     }
 
     setSelectedFile(file)
   }
 
-  const handleClearFile = () => {
+  const handleSecondaryFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    setValidationError(null)
+    setServerError(null)
+
+    if (!file) {
+      setSecondaryFile(null)
+      return
+    }
+
+    if (activeMethod?.paired_file_name) {
+      const expectedName = activeMethod.paired_file_name.toLowerCase()
+      if (file.name.toLowerCase() !== expectedName) {
+        setValidationError(
+          `Paired file must be named "${activeMethod.paired_file_name}", but received "${file.name}".`,
+        )
+      }
+    }
+
+    if (file.size > maxSizeBytes) {
+      const mbSize = (file.size / (1024 * 1024)).toFixed(1)
+      setValidationError(
+        `Paired file size (${mbSize} MB) exceeds maximum allowed limit of ${maxMb} MB.`,
+      )
+    }
+
+    setSecondaryFile(file)
+  }
+
+  const handleClearPrimaryFile = () => {
     setSelectedFile(null)
     setValidationError(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
+    if (primaryFileInputRef.current) primaryFileInputRef.current.value = ''
+  }
+
+  const handleClearSecondaryFile = () => {
+    setSecondaryFile(null)
+    setValidationError(null)
+    if (secondaryFileInputRef.current) secondaryFileInputRef.current.value = ''
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -79,18 +194,30 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
     }
 
     if (!selectedFile) {
-      setValidationError('Please select a lockfile to import.')
+      setValidationError('Please select a dependency file to import.')
       return
     }
 
-    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
-      setValidationError('File size exceeds the 10 MB maximum limit.')
+    if (selectedFile.size > maxSizeBytes) {
+      setValidationError(`File size exceeds maximum allowed limit of ${maxMb} MB.`)
+      return
+    }
+
+    if (activeMethod?.requires_paired_file && !secondaryFile) {
+      setValidationError(
+        `Paired file "${activeMethod.paired_file_name || 'checksum'}" is required for ${activeMethod.name}.`,
+      )
       return
     }
 
     setIsSubmitting(true)
     try {
-      const result = await importLockfile(project.id, trimmedService, selectedFile)
+      const result = await importDependencies(project.id, {
+        serviceName: trimmedService,
+        file: selectedFile,
+        secondaryFile,
+        importMethod: activeMethod?.id,
+      })
       setSummary(result)
     } catch (err) {
       if (err instanceof ProjectApiError) {
@@ -111,18 +238,20 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
   const handleReset = () => {
     setSummary(null)
     setSelectedFile(null)
+    setSecondaryFile(null)
     setValidationError(null)
     setServerError(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
+    if (primaryFileInputRef.current) primaryFileInputRef.current.value = ''
+    if (secondaryFileInputRef.current) secondaryFileInputRef.current.value = ''
   }
+
+  const fidelityInfo = getFidelityBadge(activeMethod?.fidelity)
 
   return (
     <div className="w-full rounded-xl border border-slate-800 bg-[#0f1822] shadow-xl overflow-hidden">
       {/* Header */}
       <div className="border-b border-slate-800/80 bg-slate-900/40 px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
               <Upload className="h-5 w-5" aria-hidden="true" />
@@ -130,14 +259,17 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
             <div>
               <h2 className="text-base font-semibold text-white">Import Service Dependencies</h2>
               <p className="text-xs text-slate-400">
-                Upload a real project lockfile to build the dependency graph in FalkorDB
+                Upload ecosystem-native lockfile or manifest to construct graph in FalkorDB
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400">Project:</span>
-            <span className="rounded bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-200">
-              {project.name} ({project.ecosystem})
+            <span className="rounded bg-slate-800 px-2 py-0.5 text-xs font-semibold text-slate-200">
+              {project.name}
+            </span>
+            <span className="rounded bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-xs font-semibold text-sky-300">
+              {capability?.display_name || project.ecosystem}
             </span>
           </div>
         </div>
@@ -160,16 +292,31 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
               <CheckCircle2 className="h-5 w-5 text-emerald-400 mt-0.5 shrink-0" aria-hidden="true" />
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-white">
-                    Lockfile Imported Successfully
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-white">Dependencies Imported</h3>
+                    {summary.fidelity && (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                          getFidelityBadge(summary.fidelity).color
+                        }`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            getFidelityBadge(summary.fidelity).dot
+                          }`}
+                        />
+                        {getFidelityBadge(summary.fidelity).label}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
                     {summary.status}
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-300">
-                  Real dependency hierarchy stored in FalkorDB for service{' '}
-                  <span className="font-semibold text-white">{summary.service_name}</span>.
+                  Dependency hierarchy stored in FalkorDB for service{' '}
+                  <span className="font-semibold text-white">{summary.service_name}</span> under{' '}
+                  <span className="font-semibold text-sky-300">{summary.ecosystem}</span>.
                 </p>
               </div>
             </div>
@@ -197,15 +344,15 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
               <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-4 text-center">
                 <div className="text-2xl font-bold text-amber-400">{summary.skipped_entries}</div>
                 <div className="mt-1 text-xs font-medium text-slate-400">Skipped Entries</div>
-                <div className="mt-1 text-[11px] text-slate-500">Links or unversioned</div>
+                <div className="mt-1 text-[11px] text-slate-500">Unpinned or links</div>
               </div>
 
               <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-4 text-center">
-                <div className="text-2xl font-bold text-slate-300">
-                  {summary.errors.length}
-                </div>
+                <div className="text-2xl font-bold text-slate-300">{summary.errors.length}</div>
                 <div className="mt-1 text-xs font-medium text-slate-400">Errors</div>
-                <div className="mt-1 text-[11px] text-slate-500">Zero critical failures</div>
+                <div className="mt-1 text-[11px] text-slate-500">
+                  {summary.errors.length === 0 ? 'Zero failures' : `${summary.errors.length} issues`}
+                </div>
               </div>
             </div>
 
@@ -213,16 +360,26 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
             <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-4 text-xs text-slate-300 space-y-2">
               <div className="flex items-center gap-2 font-semibold text-slate-200">
                 <Database className="h-4 w-4 text-sky-400" aria-hidden="true" />
-                <span>Import Provenance & Integrity</span>
+                <span>Import Provenance &amp; Integrity</span>
               </div>
               <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2">
                 <div>
-                  <span className="text-slate-500">Source Lockfile: </span>
+                  <span className="text-slate-500">Primary File: </span>
                   <span className="font-mono text-slate-200">{summary.filename}</span>
                 </div>
                 <div>
                   <span className="text-slate-500">Service: </span>
                   <span className="font-medium text-slate-200">{summary.service_name}</span>
+                </div>
+                {summary.secondary_filename && (
+                  <div>
+                    <span className="text-slate-500">Paired Checksum File: </span>
+                    <span className="font-mono text-slate-200">{summary.secondary_filename}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-slate-500">Import Method: </span>
+                  <span className="font-medium text-slate-200">{summary.import_method}</span>
                 </div>
                 <div className="sm:col-span-2">
                   <span className="text-slate-500">SHA-256 Digest: </span>
@@ -248,35 +405,39 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
               <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-300">
                 <div className="flex items-center gap-2 font-semibold text-amber-200 mb-1">
                   <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-                  <span>Parser Warnings ({summary.warnings.length})</span>
+                  <span>Parser Warnings &amp; Skipped Declarations ({summary.warnings.length})</span>
                 </div>
-                <ul className="list-disc pl-5 space-y-1 text-slate-300">
-                  {summary.warnings.slice(0, 5).map((w, idx) => (
+                <ul className="list-disc pl-5 space-y-1 text-slate-300 max-h-48 overflow-y-auto">
+                  {summary.warnings.map((w, idx) => (
                     <li key={idx}>{w}</li>
                   ))}
-                  {summary.warnings.length > 5 && (
-                    <li className="text-slate-500">...and {summary.warnings.length - 5} more</li>
-                  )}
                 </ul>
               </div>
             )}
 
             {/* Actions */}
             <div className="flex items-center justify-end gap-3 pt-2">
+              <Link
+                to="/history"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs font-semibold text-sky-300 transition-colors hover:bg-sky-500/20"
+              >
+                <History className="h-3.5 w-3.5" aria-hidden="true" />
+                View in Ingestion History
+              </Link>
               <button
                 type="button"
                 onClick={handleReset}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-200 transition-colors hover:border-slate-600 hover:bg-slate-700 hover:text-white"
               >
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-                Import Another Lockfile
+                Import Another Dependency File
               </button>
             </div>
           </div>
         ) : (
           /* Form View */
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Error Message */}
+            {/* Server Error Message */}
             {serverError && (
               <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-200 flex items-start gap-3">
                 <AlertCircle className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" aria-hidden="true" />
@@ -291,6 +452,7 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
               </div>
             )}
 
+            {/* Client Validation Error */}
             {validationError && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200 flex items-start gap-2.5">
                 <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
@@ -298,12 +460,80 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
               </div>
             )}
 
+            {/* Import Method Selector (when multiple methods available) */}
+            {methods.length > 1 && (
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-2">
+                  Select Import Format / Method <span className="text-rose-400">*</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                  {methods.map((method) => {
+                    const isSelected = method.id === selectedMethodId
+                    const badge = getFidelityBadge(method.fidelity)
+                    return (
+                      <button
+                        key={method.id}
+                        type="button"
+                        onClick={() => handleMethodChange(method.id)}
+                        className={`flex flex-col text-left p-3 rounded-lg border transition-all ${
+                          isSelected
+                            ? 'border-sky-500/60 bg-sky-500/10 ring-1 ring-sky-500/40 text-white'
+                            : 'border-slate-800 bg-[#0b121a] hover:border-slate-700 text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xs font-semibold">{method.name}</span>
+                        </div>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${badge.color}`}
+                          >
+                            <span className={`h-1 w-1 rounded-full ${badge.dot}`} />
+                            {badge.label}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Method Fidelity Guidance Banner */}
+            {activeMethod && (
+              <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-3.5 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-200">
+                      Method: {activeMethod.name}
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${fidelityInfo.color}`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${fidelityInfo.dot}`} />
+                      {fidelityInfo.label}
+                    </span>
+                  </div>
+                  <span className="font-mono text-[11px] text-slate-400">
+                    Accepted: {activeMethod.accepted_filenames.join(', ')}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">{activeMethod.fidelity_description}</p>
+                {activeMethod.limitations.length > 0 && (
+                  <div className="pt-1 border-t border-slate-800/80">
+                    <ul className="list-disc pl-4 text-[11px] text-amber-300/90 space-y-0.5">
+                      {activeMethod.limitations.map((lim, i) => (
+                        <li key={i}>{lim}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Service Name Input */}
             <div>
-              <label
-                htmlFor="service-name-input"
-                className="block text-xs font-medium text-slate-300"
-              >
+              <label htmlFor="service-name-input" className="block text-xs font-medium text-slate-300">
                 Service Name <span className="text-rose-400">*</span>
               </label>
               <div className="mt-1.5">
@@ -314,20 +544,19 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
                   disabled={isSubmitting}
                   value={serviceName}
                   onChange={(e) => setServiceName(e.target.value)}
-                  placeholder="e.g. payment-service, web-api, checkout"
+                  placeholder="e.g. payment-service, auth-api, order-worker"
                   className="block w-full rounded-lg border border-slate-700 bg-[#0b121a] px-3.5 py-2 text-sm text-slate-100 placeholder-slate-500 transition-colors focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-50"
                 />
               </div>
               <p className="mt-1 text-[11px] text-slate-500">
-                Dependencies will be scoped and linked to this named service within{' '}
-                {project.name}.
+                Dependencies will be scoped and linked to this named service within {project.name}.
               </p>
             </div>
 
-            {/* File Upload Dropzone / Picker */}
+            {/* Primary File Upload Dropzone / Picker */}
             <div>
               <label className="block text-xs font-medium text-slate-300">
-                Dependency Lockfile <span className="text-rose-400">*</span>
+                Primary Dependency File <span className="text-rose-400">*</span>
               </label>
               <div className="mt-1.5">
                 {selectedFile ? (
@@ -339,14 +568,14 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
                           {selectedFile.name}
                         </div>
                         <div className="text-[11px] text-slate-400">
-                          {(selectedFile.size / 1024).toFixed(1)} KB &bull; npm lockfile
+                          {(selectedFile.size / 1024).toFixed(1)} KB &bull; {project.ecosystem} input
                         </div>
                       </div>
                     </div>
                     <button
                       type="button"
                       disabled={isSubmitting}
-                      onClick={handleClearFile}
+                      onClick={handleClearPrimaryFile}
                       className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:opacity-50"
                       aria-label="Remove selected file"
                     >
@@ -355,23 +584,26 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
                   </div>
                 ) : (
                   <label
-                    htmlFor="lockfile-file-input"
+                    htmlFor="primary-file-input"
                     className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-700 bg-[#0b121a] px-6 py-6 transition-colors hover:border-slate-500 hover:bg-slate-900/40"
                   >
                     <FileCode className="h-8 w-8 text-slate-400" aria-hidden="true" />
                     <span className="mt-2 text-xs font-semibold text-slate-300">
-                      Click to choose <span className="text-sky-400">package-lock.json</span>
+                      Click to choose{' '}
+                      <span className="text-sky-400 font-mono">
+                        {activeMethod?.accepted_filenames.join(' or ') || 'dependency file'}
+                      </span>
                     </span>
                     <span className="mt-1 text-[11px] text-slate-500">
-                      Standard npm lockfile v1, v2, or v3 (up to 10 MB)
+                      {activeMethod?.name || project.ecosystem} (up to {maxMb} MB)
                     </span>
                     <input
-                      id="lockfile-file-input"
-                      ref={fileInputRef}
+                      id="primary-file-input"
+                      ref={primaryFileInputRef}
                       type="file"
-                      accept=".json,application/json"
+                      accept={activeMethod?.accepted_extensions.join(',') || undefined}
                       disabled={isSubmitting}
-                      onChange={handleFileChange}
+                      onChange={handlePrimaryFileChange}
                       className="sr-only"
                     />
                   </label>
@@ -379,12 +611,82 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
               </div>
             </div>
 
-            {/* Format Notice */}
+            {/* Optional or Required Secondary Paired File Dropzone */}
+            {activeMethod && (activeMethod.paired_file_name || activeMethod.requires_paired_file) && (
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-medium text-slate-300">
+                    Paired Checksum File ({activeMethod.paired_file_name})
+                    {activeMethod.requires_paired_file ? (
+                      <span className="text-rose-400"> *</span>
+                    ) : (
+                      <span className="text-slate-500"> (Optional)</span>
+                    )}
+                  </label>
+                  <span className="text-[11px] text-sky-400 flex items-center gap-1">
+                    <ShieldCheck className="h-3 w-3" />
+                    Cryptographic Checksum Verification
+                  </span>
+                </div>
+                <div className="mt-1.5">
+                  {secondaryFile ? (
+                    <div className="flex items-center justify-between rounded-lg border border-cyan-500/40 bg-cyan-500/5 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <FileCheck className="h-5 w-5 text-cyan-400" aria-hidden="true" />
+                        <div>
+                          <div className="text-xs font-semibold text-slate-200">
+                            {secondaryFile.name}
+                          </div>
+                          <div className="text-[11px] text-slate-400">
+                            {(secondaryFile.size / 1024).toFixed(1)} KB &bull; checksums paired
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isSubmitting}
+                        onClick={handleClearSecondaryFile}
+                        className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-50"
+                        aria-label="Remove paired file"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label
+                      htmlFor="secondary-file-input"
+                      className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-700 bg-[#0b121a] px-6 py-4 transition-colors hover:border-slate-500 hover:bg-slate-900/40"
+                    >
+                      <FileText className="h-6 w-6 text-slate-400" aria-hidden="true" />
+                      <span className="mt-1 text-xs font-semibold text-slate-300">
+                        Attach paired{' '}
+                        <span className="text-cyan-400 font-mono">{activeMethod.paired_file_name}</span>
+                      </span>
+                      <span className="mt-0.5 text-[11px] text-slate-500">
+                        {activeMethod.paired_file_description || 'Optional paired verification file'}
+                      </span>
+                      <input
+                        id="secondary-file-input"
+                        ref={secondaryFileInputRef}
+                        type="file"
+                        accept={`.${activeMethod.paired_file_name?.split('.').pop() || 'sum'}`}
+                        disabled={isSubmitting}
+                        onChange={handleSecondaryFileChange}
+                        className="sr-only"
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Security Guarantee Notice */}
             <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-3.5 text-xs text-slate-400 flex items-center gap-2.5">
               <Layers className="h-4 w-4 text-sky-400 shrink-0" aria-hidden="true" />
               <span>
-                <strong>Supported Ecosystem:</strong> npm (<code className="text-slate-300">package-lock.json</code>).
-                Uploaded files are parsed securely without code execution.
+                <strong>Zero Code Execution:</strong> Vulnify parses dependency declarations via
+                isolated deterministic ASTs. Manifest scripts, lifecycle hooks, and shell commands
+                are never executed.
               </span>
             </div>
 
@@ -403,7 +705,7 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
                 ) : (
                   <>
                     <Upload className="h-4 w-4" aria-hidden="true" />
-                    <span>Import Lockfile</span>
+                    <span>Import Dependencies</span>
                   </>
                 )}
               </button>

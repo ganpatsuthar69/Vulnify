@@ -57,7 +57,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { name: 'Dependencies', path: '/dependencies', icon: Package },
       { name: 'Import Data', path: '/import', icon: UploadCloud },
-      { name: 'Ingestion History', path: '/history', icon: History, badge: 'US-105', isPlanned: true },
+      { name: 'Ingestion History', path: '/history', icon: History },
     ],
   },
   {

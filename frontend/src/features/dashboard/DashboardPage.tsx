@@ -192,14 +192,14 @@ export function DashboardPage() {
                     Step 1 Required: No dependencies imported yet
                   </h2>
                   <p className="mt-1 text-slate-300">
-                    Upload your service's <code className="text-white">package-lock.json</code> to build
+                    Upload your service's lockfile or dependency manifest to build
                     the dependency graph in FalkorDB before scanning for advisories.
                   </p>
                   <Link
                     to="/import"
                     className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-amber-500/20 border border-amber-500/40 px-3 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/30 transition-colors"
                   >
-                    <span>Import lockfile now</span>
+                    <span>Import dependencies now</span>
                     <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                   </Link>
                 </div>

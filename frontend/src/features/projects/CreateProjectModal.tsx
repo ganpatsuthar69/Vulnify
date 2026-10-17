@@ -10,7 +10,7 @@ interface CreateProjectModalProps {
 }
 
 export function CreateProjectModal({ isOpen, onClose }: CreateProjectModalProps) {
-  const { createProject } = useProjects()
+  const { createProject, capabilities } = useProjects()
   const [name, setName] = useState('')
   const [ecosystem, setEcosystem] = useState<SupportedEcosystem>('npm')
   const [description, setDescription] = useState('')
@@ -102,8 +102,18 @@ export function CreateProjectModal({ isOpen, onClose }: CreateProjectModalProps)
               onChange={(e) => setEcosystem(e.target.value as SupportedEcosystem)}
               className="mt-1.5 block w-full rounded-lg border border-slate-700 bg-[#0b121a] px-3.5 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-50"
             >
-              <option value="npm">npm (Node.js)</option>
-              <option value="PyPI">PyPI (Python)</option>
+              {capabilities.length > 0 ? (
+                capabilities.map((cap) => (
+                  <option key={cap.id} value={cap.id}>
+                    {cap.display_name}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="npm">npm (Node.js)</option>
+                  <option value="PyPI">PyPI (Python)</option>
+                </>
+              )}
             </select>
           </div>
 

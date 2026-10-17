@@ -10,10 +10,11 @@ import {
 import { useAuth } from '@/features/auth/AuthProvider'
 import {
   createProject as apiCreateProject,
+  getEcosystemCapabilities,
   listProjects as apiListProjects,
   ProjectApiError,
 } from './projectApi'
-import type { CreateProjectInput, Project } from './types'
+import type { CreateProjectInput, EcosystemCapability, Project } from './types'
 
 const STORAGE_ACTIVE_PROJECT_KEY = 'vulnify_active_project_id'
 
@@ -21,11 +22,14 @@ interface ProjectContextValue {
   projects: Project[]
   activeProject: Project | null
   activeProjectId: string | null
+  capabilities: EcosystemCapability[]
+  capabilitiesLoading: boolean
   isLoading: boolean
   error: string | null
   selectProject: (projectId: string) => void
   createProject: (input: CreateProjectInput) => Promise<Project>
   refreshProjects: () => Promise<void>
+  refreshCapabilities: () => Promise<void>
 }
 
 const ProjectContext = createContext<ProjectContextValue | undefined>(undefined)
@@ -54,8 +58,26 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const { status } = useAuth()
   const [projects, setProjects] = useState<Project[]>([])
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+  const [capabilities, setCapabilities] = useState<EcosystemCapability[]>([])
+  const [capabilitiesLoading, setCapabilitiesLoading] = useState<boolean>(false)
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
+
+  const refreshCapabilities = useCallback(async (): Promise<void> => {
+    if (status !== 'authenticated') {
+      setCapabilities([])
+      return
+    }
+    setCapabilitiesLoading(true)
+    try {
+      const res = await getEcosystemCapabilities()
+      setCapabilities(res.capabilities)
+    } catch {
+      // Fail silently or leave existing capabilities intact
+    } finally {
+      setCapabilitiesLoading(false)
+    }
+  }, [status])
 
   const refreshProjects = useCallback(async (): Promise<void> => {
     if (status !== 'authenticated') {
@@ -102,7 +124,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refreshProjects()
-  }, [refreshProjects])
+    void refreshCapabilities()
+  }, [refreshProjects, refreshCapabilities])
 
   const selectProject = useCallback((projectId: string): void => {
     setActiveProjectId((prev) => {
@@ -133,21 +156,27 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       projects,
       activeProject,
       activeProjectId,
+      capabilities,
+      capabilitiesLoading,
       isLoading,
       error,
       selectProject,
       createProject,
       refreshProjects,
+      refreshCapabilities,
     }),
     [
       projects,
       activeProject,
       activeProjectId,
+      capabilities,
+      capabilitiesLoading,
       isLoading,
       error,
       selectProject,
       createProject,
       refreshProjects,
+      refreshCapabilities,
     ],
   )
 

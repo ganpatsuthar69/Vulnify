@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import logging
 import time
 from typing import Any
+import uuid
 
 from fastapi import Depends
 
@@ -15,9 +16,12 @@ from vulnify.graph.advisory_repository import (
     VulnerabilityRecord,
     get_advisory_repository,
 )
+from vulnify.graph.job_repository import IIngestionJobRepository, get_job_repository
+from vulnify.models import IngestionJobRecord, JobStatus, JobType
 from vulnify.osv.cache import OsvCache, get_osv_cache
 from vulnify.osv.client import OsvClient
 from vulnify.osv.models import OsvPackage, OsvQuery, OsvVulnerability
+from vulnify.parsers.registry import get_ecosystem_registry
 from vulnify.schemas import OsvImportSummaryResponse
 
 logger = logging.getLogger("vulnify")
@@ -32,6 +36,7 @@ class OsvService:
         advisory_repo: IAdvisoryRepository | None = None,
         client: OsvClient | None = None,
         cache: OsvCache | None = None,
+        job_repo: IIngestionJobRepository | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         if advisory_repo is not None:
@@ -43,19 +48,75 @@ class OsvService:
             self.advisory_repo = get_advisory_repository()
         self.client = client or OsvClient(self.settings)
         self.cache = cache or get_osv_cache(self.settings.OSV_CACHE_TTL_SECONDS)
+        self.job_repo = job_repo
 
     async def import_project_advisories(
         self,
         project_id: str,
         force_refresh: bool = False,
+        initiated_by: str | None = None,
+        job_id: str | None = None,
     ) -> OsvImportSummaryResponse:
         """Run advisory ingestion workflow for all package versions belonging to a project."""
         t0 = time.time()
         now_ts = int(datetime.now(timezone.utc).timestamp())
+        job: IngestionJobRecord | None = None
+
+        if self.job_repo is not None:
+            actual_job_id = job_id or str(uuid.uuid4())
+            existing_job = self.job_repo.get_job(project_id, actual_job_id) if job_id else None
+            job = IngestionJobRecord(
+                id=actual_job_id,
+                project_id=project_id,
+                job_type=JobType.OSV_SYNC,
+                status=JobStatus.RUNNING,
+                stage="Inspecting project package versions",
+                created_at=existing_job.created_at if existing_job else now_ts,
+                started_at=now_ts,
+                initiated_by=initiated_by or (existing_job.initiated_by if existing_job else None),
+                retry_of_job_id=existing_job.retry_of_job_id if existing_job else None,
+            )
+            self.job_repo.upsert_job(job)
+
+        try:
+            return await self._execute_import_workflow(
+                project_id=project_id,
+                force_refresh=force_refresh,
+                t0=t0,
+                now_ts=now_ts,
+                job=job,
+            )
+        except Exception as exc:
+            if self.job_repo is not None and job is not None:
+                job.status = JobStatus.FAILED
+                job.stage = f"Failed: {str(exc)}"
+                job.error_summary = str(exc)
+                job.errors = [str(exc)]
+                job.completed_at = int(datetime.now(timezone.utc).timestamp())
+                job.duration_ms = round((time.time() - t0) * 1000, 2)
+                job.retry_eligible = True
+                self.job_repo.upsert_job(job)
+            raise
+
+    async def _execute_import_workflow(
+        self,
+        project_id: str,
+        force_refresh: bool,
+        t0: float,
+        now_ts: int,
+        job: IngestionJobRecord | None,
+    ) -> OsvImportSummaryResponse:
 
         # 1. Check if OSV integration is enabled
         if not self.settings.OSV_ENABLED:
             duration_ms = round((time.time() - t0) * 1000, 2)
+            if self.job_repo is not None and job is not None:
+                job.status = JobStatus.SUCCEEDED
+                job.stage = "OSV integration disabled"
+                job.completed_at = int(datetime.now(timezone.utc).timestamp())
+                job.duration_ms = duration_ms
+                job.warnings = ["OSV advisory integration is disabled by configuration (OSV_ENABLED=false)."]
+                self.job_repo.upsert_job(job)
             return OsvImportSummaryResponse(
                 project_id=project_id,
                 total_package_versions=0,
@@ -73,6 +134,7 @@ class OsvService:
                 status="skipped",
                 errors=["OSV advisory integration is disabled by configuration (OSV_ENABLED=false)."],
                 duration_ms=duration_ms,
+                job_id=job.id if job else None,
             )
 
         # 2. Retrieve project's persisted package versions from FalkorDB
@@ -81,6 +143,12 @@ class OsvService:
 
         if total_packages == 0:
             duration_ms = round((time.time() - t0) * 1000, 2)
+            if self.job_repo is not None and job is not None:
+                job.status = JobStatus.SUCCEEDED
+                job.stage = "No package versions found to query"
+                job.completed_at = int(datetime.now(timezone.utc).timestamp())
+                job.duration_ms = duration_ms
+                self.job_repo.upsert_job(job)
             return OsvImportSummaryResponse(
                 project_id=project_id,
                 total_package_versions=0,
@@ -98,29 +166,38 @@ class OsvService:
                 status="completed",
                 errors=[],
                 duration_ms=duration_ms,
+                job_id=job.id if job else None,
             )
 
-        # 3. Filter eligible packages with valid metadata
-        eligible_items: list[PackageVersionItem] = []
+        # 3. Filter eligible packages with valid metadata and canonical OSV ecosystem
+        eligible_items: list[tuple[PackageVersionItem, str]] = []
         skipped_count = 0
+        registry = get_ecosystem_registry()
 
         for item in package_items:
             name = item.name.strip() if item.name else ""
             version = item.version.strip() if item.version else ""
-            ecosystem = item.ecosystem.strip() if item.ecosystem else ""
+            raw_ecosystem = item.ecosystem.strip() if item.ecosystem else ""
 
-            if not name or not version or not ecosystem:
+            if not name or not version or not raw_ecosystem:
                 skipped_count += 1
                 continue
-            eligible_items.append(item)
+
+            try:
+                osv_eco = registry.get_osv_ecosystem(raw_ecosystem)
+            except Exception:
+                skipped_count += 1
+                continue
+
+            eligible_items.append((item, osv_eco))
 
         eligible_count = len(eligible_items)
 
         # 4. Group package items by unique (ecosystem, name, version) query to deduplicate lookups
         queries_to_items: dict[OsvQuery, list[PackageVersionItem]] = {}
-        for item in eligible_items:
+        for item, osv_eco in eligible_items:
             q = OsvQuery(
-                package=OsvPackage(name=item.name.strip(), ecosystem=item.ecosystem.strip()),
+                package=OsvPackage(name=item.name.strip(), ecosystem=osv_eco),
                 version=item.version.strip(),
             )
             queries_to_items.setdefault(q, []).append(item)
@@ -209,6 +286,35 @@ class OsvService:
 
         duration_ms = round((time.time() - t0) * 1000, 2)
 
+        if self.job_repo is not None and job is not None:
+            job.total_items = total_packages
+            job.processed_items = total_packages
+            job.percentage = 100.0
+            job.discovered_items = total_advisories_found
+            job.created_items = adv_created
+            job.updated_items = adv_updated
+            job.reused_items = rel_reused
+            job.failed_items = failed_lookups_count
+            job.errors = errors
+            job.status = (
+                JobStatus.SUCCEEDED
+                if status == "completed"
+                else (JobStatus.PARTIAL if status == "partial_failure" else JobStatus.FAILED)
+            )
+            job.stage = (
+                "OSV advisory sync completed successfully"
+                if job.status == JobStatus.SUCCEEDED
+                else (
+                    "OSV advisory sync completed with partial failures"
+                    if job.status == JobStatus.PARTIAL
+                    else "OSV advisory sync failed"
+                )
+            )
+            job.completed_at = int(datetime.now(timezone.utc).timestamp())
+            job.duration_ms = duration_ms
+            job.retry_eligible = job.status in (JobStatus.PARTIAL, JobStatus.FAILED)
+            self.job_repo.upsert_job(job)
+
         logger.info(
             f"OSV advisory ingestion completed for project {project_id}: "
             f"{total_packages} considered, {unique_lookups_count} lookups, "
@@ -233,14 +339,18 @@ class OsvService:
             status=status,
             errors=errors,
             duration_ms=duration_ms,
+            job_id=job.id if job else None,
         )
 
 
 def get_osv_service(
     settings: Settings = Depends(get_settings),
     advisory_repo: IAdvisoryRepository = Depends(get_advisory_repository),
+    job_repo: IIngestionJobRepository = Depends(get_job_repository),
 ) -> OsvService:
     return OsvService(
         settings=settings,
         advisory_repo=advisory_repo,
+        job_repo=job_repo,
     )
+

@@ -1,15 +1,17 @@
-"""Service orchestrating ecosystem-aware version matching and vulnerability finding persistence."""
-
+from datetime import datetime, timezone
 import logging
 import time
 from typing import Any
+import uuid
 
 from fastapi import Depends
 
+from vulnify.graph.job_repository import IIngestionJobRepository, get_job_repository
 from vulnify.graph.vulnerability_repository import (
     IVulnerabilityRepository,
     get_vulnerability_repository,
 )
+from vulnify.models import IngestionJobRecord, JobStatus, JobType
 from vulnify.schemas import (
     ProjectMatchResponse,
     VersionMatchResultResponse,
@@ -28,8 +30,13 @@ logger = logging.getLogger("vulnify")
 class VersionMatchingService:
     """Evaluates package versions against known advisories and updates the graph."""
 
-    def __init__(self, repo: IVulnerabilityRepository | None = None) -> None:
+    def __init__(
+        self,
+        repo: IVulnerabilityRepository | None = None,
+        job_repo: IIngestionJobRepository | None = None,
+    ) -> None:
         self.repo = repo or get_vulnerability_repository()
+        self.job_repo = job_repo
 
     def evaluate_single(
         self,
@@ -47,9 +54,53 @@ class VersionMatchingService:
             advisory=advisory_data,
         )
 
-    def match_project_vulnerabilities(self, project_id: str) -> ProjectMatchResponse:
+    def match_project_vulnerabilities(
+        self,
+        project_id: str,
+        initiated_by: str | None = None,
+        job_id: str | None = None,
+    ) -> ProjectMatchResponse:
         """Run ecosystem-aware matching for all package-advisory pairs associated with a project."""
         t0 = time.time()
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        job: IngestionJobRecord | None = None
+
+        if self.job_repo is not None:
+            actual_job_id = job_id or str(uuid.uuid4())
+            existing_job = self.job_repo.get_job(project_id, actual_job_id) if job_id else None
+            job = IngestionJobRecord(
+                id=actual_job_id,
+                project_id=project_id,
+                job_type=JobType.VERSION_MATCHING,
+                status=JobStatus.RUNNING,
+                stage="Evaluating package-advisory constraints",
+                created_at=existing_job.created_at if existing_job else now_ts,
+                started_at=now_ts,
+                initiated_by=initiated_by or (existing_job.initiated_by if existing_job else None),
+                retry_of_job_id=existing_job.retry_of_job_id if existing_job else None,
+            )
+            self.job_repo.upsert_job(job)
+
+        try:
+            return self._execute_matching_workflow(project_id=project_id, t0=t0, job=job)
+        except Exception as exc:
+            if self.job_repo is not None and job is not None:
+                job.status = JobStatus.FAILED
+                job.stage = f"Failed: {str(exc)}"
+                job.error_summary = str(exc)
+                job.errors = [str(exc)]
+                job.completed_at = int(datetime.now(timezone.utc).timestamp())
+                job.duration_ms = round((time.time() - t0) * 1000, 2)
+                job.retry_eligible = True
+                self.job_repo.upsert_job(job)
+            raise
+
+    def _execute_matching_workflow(
+        self,
+        project_id: str,
+        t0: float,
+        job: IngestionJobRecord | None,
+    ) -> ProjectMatchResponse:
         pairs = self.repo.get_project_package_advisories(project_id)
 
         affected_matches: list[tuple[str, VersionMatchResult]] = []
@@ -118,6 +169,21 @@ class VersionMatchingService:
         duration_ms = round((time.time() - t0) * 1000, 2)
         total_eval = len(pairs)
 
+        if self.job_repo is not None and job is not None:
+            job.total_items = total_eval
+            job.processed_items = total_eval
+            job.percentage = 100.0
+            job.discovered_items = total_eval
+            job.created_items = affected_count
+            job.updated_items = persisted_count
+            job.reused_items = removed_count
+            job.status = JobStatus.SUCCEEDED
+            job.stage = "Version matching completed successfully"
+            job.completed_at = int(datetime.now(timezone.utc).timestamp())
+            job.duration_ms = duration_ms
+            job.retry_eligible = False
+            self.job_repo.upsert_job(job)
+
         logger.info(
             f"Version matching finished for project {project_id}: "
             f"{total_eval} evaluated ({affected_count} affected, {not_affected_count} not affected, {unknown_count} unknown), "
@@ -135,6 +201,7 @@ class VersionMatchingService:
             duration_ms=duration_ms,
             status="completed",
             results=all_evaluations,
+            job_id=job.id if job else None,
         )
 
     def get_project_findings(self, project_id: str) -> list[VulnerabilityFindingResponse]:
@@ -172,6 +239,7 @@ class VersionMatchingService:
 
 def get_version_matching_service(
     repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+    job_repo: IIngestionJobRepository = Depends(get_job_repository),
 ) -> VersionMatchingService:
-    return VersionMatchingService(repo=repo)
+    return VersionMatchingService(repo=repo, job_repo=job_repo)
 

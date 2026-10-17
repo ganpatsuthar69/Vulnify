@@ -1,24 +1,38 @@
 import asyncio
+from datetime import datetime, timezone
 import email
 import hashlib
+import math
+import time
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from vulnify.config import Settings, get_settings
 from vulnify.dependencies import get_valid_project, require_auth
 from vulnify.graph.advisory_repository import IAdvisoryRepository, get_advisory_repository
 from vulnify.graph.dependency_repository import IDependencyRepository, get_dependency_repository
+from vulnify.graph.job_repository import IIngestionJobRepository, get_job_repository
 from vulnify.graph.project_repository import (
     IProjectRepository,
     ProjectRecord,
     get_project_repository,
 )
+from vulnify.models import IngestionJobRecord, JobStatus, JobType
 from vulnify.osv.service import OsvService, get_osv_service
-from vulnify.parsers.models import LockfileParseError
-from vulnify.parsers.npm import parse_npm_lockfile
+from vulnify.parsers.models import DependencyParseError, LockfileParseError
+from vulnify.parsers.registry import (
+    EcosystemCapabilitiesResponse,
+    get_ecosystem_registry,
+    get_supported_ecosystem_ids,
+)
 from vulnify.schemas import (
     SERVICE_NAME_REGEX,
     SUPPORTED_ECOSYSTEMS,
     ImportSummaryResponse,
+    IngestionJobListResponse,
+    IngestionJobResponse,
+    IngestionJobSummaryStats,
+    JobRetryResponse,
     OsvImportSummaryResponse,
     ProjectAdvisoryResponse,
     ProjectCreateRequest,
@@ -39,12 +53,17 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 _create_project_lock = asyncio.Lock()
 
 
-def _extract_multipart(body: bytes, content_type: str) -> tuple[str | None, str | None, bytes | None]:
+def _extract_multipart(
+    body: bytes, content_type: str
+) -> tuple[str | None, str | None, bytes | None, str | None, bytes | None, str | None]:
     """Parse multipart/form-data using standard library email parser."""
     msg = email.message_from_bytes(f"Content-Type: {content_type}\r\n\r\n".encode("latin-1") + body)
     service_name = None
     filename = None
     file_bytes = None
+    secondary_filename = None
+    secondary_file_bytes = None
+    import_method = None
 
     if msg.is_multipart():
         for part in msg.get_payload():
@@ -53,10 +72,17 @@ def _extract_multipart(body: bytes, content_type: str) -> tuple[str | None, str 
                 payload = part.get_payload(decode=True)
                 if payload:
                     service_name = payload.decode("utf-8", errors="replace").strip()
+            elif cd_name == "import_method":
+                payload = part.get_payload(decode=True)
+                if payload:
+                    import_method = payload.decode("utf-8", errors="replace").strip()
             elif cd_name == "file":
                 filename = part.get_filename() or "package-lock.json"
                 file_bytes = part.get_payload(decode=True)
-    return service_name, filename, file_bytes
+            elif cd_name in ("secondary_file", "paired_file", "go_sum"):
+                secondary_filename = part.get_filename() or "go.sum"
+                secondary_file_bytes = part.get_payload(decode=True)
+    return service_name, filename, file_bytes, secondary_filename, secondary_file_bytes, import_method
 
 
 @router.get(
@@ -142,9 +168,29 @@ async def create_project(
 )
 async def get_supported_ecosystems(
     current_user: UserResponse = Depends(require_auth),
-) -> dict[str, list[str]]:
+) -> dict[str, Any]:
     """Return the list of package ecosystems supported by the system."""
-    return {"supported_ecosystems": list(SUPPORTED_ECOSYSTEMS)}
+    registry = get_ecosystem_registry()
+    return {
+        "supported_ecosystems": registry.get_supported_ecosystem_ids(),
+        "capabilities": [cap.model_dump() for cap in registry.get_capabilities()],
+    }
+
+
+@router.get(
+    "/ecosystem-capabilities",
+    response_model=EcosystemCapabilitiesResponse,
+    summary="Retrieve typed ecosystem capabilities and format metadata",
+)
+async def get_ecosystem_capabilities(
+    current_user: UserResponse = Depends(require_auth),
+) -> EcosystemCapabilitiesResponse:
+    """Return typed capability models for all genuinely implemented and tested ecosystems."""
+    registry = get_ecosystem_registry()
+    return EcosystemCapabilitiesResponse(
+        supported_ecosystems=registry.get_supported_ecosystem_ids(),
+        capabilities=registry.get_capabilities(),
+    )
 
 
 @router.get(
@@ -186,6 +232,7 @@ async def import_dependencies(
     current_user: UserResponse = Depends(require_auth),
     project: ProjectRecord = Depends(get_valid_project),
     dep_repo: IDependencyRepository = Depends(get_dependency_repository),
+    job_repo: IIngestionJobRepository = Depends(get_job_repository),
     settings: Settings = Depends(get_settings),
 ) -> ImportSummaryResponse:
     """Parse and persist dependency graph from an uploaded lockfile for a named service.
@@ -221,9 +268,12 @@ async def import_dependencies(
     service_name: str | None = None
     filename: str | None = None
     file_bytes: bytes | None = None
+    secondary_filename: str | None = None
+    secondary_file_bytes: bytes | None = None
+    import_method: str | None = None
 
     if "multipart/form-data" in content_type:
-        service_name, filename, file_bytes = _extract_multipart(body, raw_content_type)
+        service_name, filename, file_bytes, secondary_filename, secondary_file_bytes, import_method = _extract_multipart(body, raw_content_type)
     elif "application/json" in content_type:
         try:
             import json
@@ -243,6 +293,11 @@ async def import_dependencies(
         raw_content = json_data.get("content")
         if isinstance(raw_content, str):
             file_bytes = raw_content.encode("utf-8")
+        secondary_filename = json_data.get("secondary_filename")
+        raw_secondary = json_data.get("secondary_content")
+        if isinstance(raw_secondary, str):
+            secondary_file_bytes = raw_secondary.encode("utf-8")
+        import_method = json_data.get("import_method")
     else:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -275,37 +330,114 @@ async def import_dependencies(
         )
     filename = (filename or "package-lock.json").strip()
 
-    # 6. Validate lockfile format against project ecosystem
-    project_ecosystem = project.ecosystem.strip()
-    if project_ecosystem.lower() != "npm":
+    # 6. Resolve capability and import method from backend registry
+    registry = get_ecosystem_registry()
+    cap = registry.get_capability(project.ecosystem)
+    if not cap:
         raise HTTPException(
             status_code=422,
-            detail=f"Project ecosystem '{project_ecosystem}' is not currently supported for lockfile import. Only npm projects are supported.",
+            detail=f"Project ecosystem '{project.ecosystem}' is not supported for dependency import. Supported ecosystems are: {', '.join(registry.get_supported_ecosystem_ids())}.",
         )
 
-    lower_fn = filename.lower()
-    if not (lower_fn == "package-lock.json" or lower_fn.endswith(".json")):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Unsupported lockfile format '{filename}'. Supported format for npm projects is 'package-lock.json'.",
-        )
-
-    # 7. Compute SHA-256 hash
-    sha256_hash = hashlib.sha256(file_bytes).hexdigest()
-
-    # 8. Parse lockfile without code execution
     try:
-        parsed_graph = parse_npm_lockfile(file_bytes, filename=filename)
-    except LockfileParseError as exc:
+        method = registry.resolve_import_method(project.ecosystem, filename, method_id=import_method)
+    except DependencyParseError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+
+    # Enforce file-size limit from capability
+    if len(file_bytes) > cap.max_file_size_bytes:
+        max_mb = cap.max_file_size_bytes // (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File size exceeds the maximum allowed limit of {max_mb} MB.",
+        )
+    if secondary_file_bytes is not None and len(secondary_file_bytes) > cap.max_file_size_bytes:
+        max_mb = cap.max_file_size_bytes // (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"Secondary file size exceeds the maximum allowed limit of {max_mb} MB.",
+        )
+
+    # 7. Compute SHA-256 hash of primary file
+    sha256_hash = hashlib.sha256(file_bytes).hexdigest()
+    t0 = time.time()
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    job_id = str(uuid.uuid4())
+    user_identity = getattr(current_user, "email", None) or str(current_user.id)
+    job = IngestionJobRecord(
+        id=job_id,
+        project_id=project.id,
+        service_id=f"{project.id}:{service_name}",
+        service_name=service_name,
+        job_type=JobType.DEPENDENCY_IMPORT,
+        status=JobStatus.RUNNING,
+        stage=f"Parsing dependencies with {cap.id} parser",
+        created_at=now_ts,
+        started_at=now_ts,
+        initiated_by=user_identity,
+        filename=filename,
+        secondary_filename=secondary_filename,
+        sha256_hash=sha256_hash,
+        ecosystem=cap.id,
+        import_method=method.id,
+        fidelity=method.fidelity,
+    )
+    job_repo.upsert_job(job)
+
+    # 8. Parse file without code execution using the capability parser
+    parser = registry.get_parser(project.ecosystem)
+    try:
+        parsed_graph = parser.parse(
+            content=file_bytes,
+            filename=filename,
+            secondary_content=secondary_file_bytes,
+            secondary_filename=secondary_filename,
+        )
+    except (DependencyParseError, LockfileParseError) as exc:
+        job.status = JobStatus.FAILED
+        job.stage = f"Parse failed: {str(exc)}"
+        job.error_summary = str(exc)
+        job.errors = [str(exc)]
+        job.completed_at = int(datetime.now(timezone.utc).timestamp())
+        job.duration_ms = round((time.time() - t0) * 1000, 2)
+        job.retry_eligible = True
+        job_repo.upsert_job(job)
         raise HTTPException(
             status_code=422,
             detail=str(exc),
         ) from exc
     except Exception as exc:
+        job.status = JobStatus.FAILED
+        job.stage = "Parse failed: Failed to parse lockfile contents."
+        job.error_summary = "Failed to parse lockfile contents."
+        job.errors = ["Failed to parse lockfile contents."]
+        job.completed_at = int(datetime.now(timezone.utc).timestamp())
+        job.duration_ms = round((time.time() - t0) * 1000, 2)
+        job.retry_eligible = True
+        job_repo.upsert_job(job)
         raise HTTPException(
             status_code=422,
             detail="Failed to parse lockfile contents.",
         ) from exc
+
+    # Check package limit
+    if len(parsed_graph.packages) > cap.max_packages:
+        msg = f"Parsed package count ({len(parsed_graph.packages)}) exceeds maximum allowed limit of {cap.max_packages}."
+        job.status = JobStatus.FAILED
+        job.stage = f"Limit exceeded: {msg}"
+        job.error_summary = msg
+        job.errors = [msg]
+        job.completed_at = int(datetime.now(timezone.utc).timestamp())
+        job.duration_ms = round((time.time() - t0) * 1000, 2)
+        job.retry_eligible = True
+        job_repo.upsert_job(job)
+        raise HTTPException(
+            status_code=422,
+            detail=msg,
+        )
 
     # 9. Persist into FalkorDB
     try:
@@ -315,14 +447,55 @@ async def import_dependencies(
             filename=filename,
             sha256_hash=sha256_hash,
             parsed_graph=parsed_graph,
+            secondary_filename=secondary_filename,
+            ecosystem=cap.id,
+            import_method=method.id,
         )
-    except HTTPException:
+    except HTTPException as exc:
+        job.status = JobStatus.FAILED
+        job.stage = f"Failed: {exc.detail}"
+        job.error_summary = str(exc.detail)
+        job.errors = [str(exc.detail)]
+        job.completed_at = int(datetime.now(timezone.utc).timestamp())
+        job.duration_ms = round((time.time() - t0) * 1000, 2)
+        job.retry_eligible = True
+        job_repo.upsert_job(job)
         raise
     except Exception as exc:
+        job.status = JobStatus.FAILED
+        job.stage = "Persistence failed: Failed to persist dependency graph in database."
+        job.error_summary = "Failed to persist dependency graph in database."
+        job.errors = ["Failed to persist dependency graph in database."]
+        job.completed_at = int(datetime.now(timezone.utc).timestamp())
+        job.duration_ms = round((time.time() - t0) * 1000, 2)
+        job.retry_eligible = True
+        job_repo.upsert_job(job)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to persist dependency graph in database.",
         ) from exc
+
+    duration_ms = round((time.time() - t0) * 1000, 2)
+    job.total_items = len(parsed_graph.packages)
+    job.processed_items = len(parsed_graph.packages)
+    job.percentage = 100.0
+    job.discovered_items = len(parsed_graph.packages)
+    job.created_items = summary.packages_created
+    job.reused_items = summary.packages_reused
+    job.skipped_items = summary.skipped_entries
+    job.warnings = summary.warnings
+    job.errors = summary.errors
+    job.status = JobStatus.SUCCEEDED if summary.status == "completed" else JobStatus.PARTIAL
+    job.stage = (
+        "Dependency import completed successfully"
+        if job.status == JobStatus.SUCCEEDED
+        else "Dependency import completed with warnings"
+    )
+    job.completed_at = int(datetime.now(timezone.utc).timestamp())
+    job.duration_ms = duration_ms
+    job.retry_eligible = (job.status == JobStatus.PARTIAL)
+    job_repo.upsert_job(job)
+    summary.job_id = job.id
 
     return summary
 
@@ -342,9 +515,14 @@ async def import_project_advisories(
 ) -> OsvImportSummaryResponse:
     """Retrieve vulnerability advisories from OSV for packages in the project and persist in FalkorDB."""
     force_refresh = request.query_params.get("force_refresh", "false").lower() in ("true", "1", "yes")
+    user_identity = getattr(current_user, "email", None) or str(current_user.id)
 
     try:
-        summary = await advisory_service.import_project_advisories(project.id, force_refresh=force_refresh)
+        summary = await advisory_service.import_project_advisories(
+            project.id,
+            force_refresh=force_refresh,
+            initiated_by=user_identity,
+        )
         return summary
     except HTTPException:
         raise
@@ -396,8 +574,12 @@ async def match_project_vulnerabilities(
     
     Idempotently updates AFFECTS relationships in FalkorDB with explainable match reasons.
     """
+    user_identity = getattr(current_user, "email", None) or str(current_user.id)
     try:
-        return matching_service.match_project_vulnerabilities(project.id)
+        return matching_service.match_project_vulnerabilities(
+            project.id,
+            initiated_by=user_identity,
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -463,5 +645,282 @@ async def list_project_packages(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve project packages from database.",
         ) from exc
+
+
+# =====================================================================
+# US-105: Ingestion Jobs and History Endpoints
+# =====================================================================
+
+
+@router.get(
+    "/{project_id}/jobs",
+    response_model=IngestionJobListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List ingestion job history for a project",
+)
+async def list_project_jobs(
+    project_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    status: str | None = None,
+    job_type: str | None = None,
+    service_name: str | None = None,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    job_repo: IIngestionJobRepository = Depends(get_job_repository),
+) -> IngestionJobListResponse:
+    """Retrieve historical ingestion jobs for the project with filtering and pagination."""
+    if page < 1:
+        raise HTTPException(status_code=422, detail="Page must be greater than or equal to 1.")
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(status_code=422, detail="Page size must be between 1 and 100.")
+
+    offset = (page - 1) * page_size
+    records, total, summary_stats = job_repo.list_jobs(
+        project_id=project.id,
+        status=status,
+        job_type=job_type,
+        service_name=service_name,
+        limit=page_size,
+        offset=offset,
+    )
+
+    items = [
+        IngestionJobResponse(
+            id=r.id,
+            project_id=r.project_id,
+            job_type=r.job_type,
+            status=r.status,
+            stage=r.stage,
+            service_id=r.service_id,
+            service_name=r.service_name,
+            processed_items=r.processed_items,
+            total_items=r.total_items,
+            percentage=r.percentage,
+            discovered_items=r.discovered_items,
+            created_items=r.created_items,
+            updated_items=r.updated_items,
+            reused_items=r.reused_items,
+            skipped_items=r.skipped_items,
+            failed_items=r.failed_items,
+            error_summary=r.error_summary,
+            errors=r.errors,
+            warnings=r.warnings,
+            retry_eligible=r.retry_eligible,
+            retry_of_job_id=r.retry_of_job_id,
+            created_at=r.created_at,
+            started_at=r.started_at,
+            completed_at=r.completed_at,
+            duration_ms=r.duration_ms,
+            initiated_by=r.initiated_by,
+            filename=r.filename,
+            secondary_filename=r.secondary_filename,
+            sha256_hash=r.sha256_hash,
+            ecosystem=r.ecosystem,
+            import_method=r.import_method,
+            fidelity=r.fidelity,
+        )
+        for r in records
+    ]
+
+    total_pages = math.ceil(total / page_size) if total > 0 else 1
+
+    return IngestionJobListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        summary_stats=IngestionJobSummaryStats(**summary_stats),
+    )
+
+
+@router.get(
+    "/{project_id}/jobs/{job_id}",
+    response_model=IngestionJobResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get ingestion job details by ID",
+)
+async def get_project_job(
+    project_id: str,
+    job_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    job_repo: IIngestionJobRepository = Depends(get_job_repository),
+) -> IngestionJobResponse:
+    """Retrieve detailed state, progress, and results for a single ingestion job."""
+    job = job_repo.get_job(project_id=project.id, job_id=job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ingestion job '{job_id}' not found for project '{project.id}'.",
+        )
+
+    return IngestionJobResponse(
+        id=job.id,
+        project_id=job.project_id,
+        job_type=job.job_type,
+        status=job.status,
+        stage=job.stage,
+        service_id=job.service_id,
+        service_name=job.service_name,
+        processed_items=job.processed_items,
+        total_items=job.total_items,
+        percentage=job.percentage,
+        discovered_items=job.discovered_items,
+        created_items=job.created_items,
+        updated_items=job.updated_items,
+        reused_items=job.reused_items,
+        skipped_items=job.skipped_items,
+        failed_items=job.failed_items,
+        error_summary=job.error_summary,
+        errors=job.errors,
+        warnings=job.warnings,
+        retry_eligible=job.retry_eligible,
+        retry_of_job_id=job.retry_of_job_id,
+        created_at=job.created_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        duration_ms=job.duration_ms,
+        initiated_by=job.initiated_by,
+        filename=job.filename,
+        secondary_filename=job.secondary_filename,
+        sha256_hash=job.sha256_hash,
+        ecosystem=job.ecosystem,
+        import_method=job.import_method,
+        fidelity=job.fidelity,
+    )
+
+
+@router.post(
+    "/{project_id}/jobs/{job_id}/retry",
+    response_model=JobRetryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Retry an eligible failed or partial ingestion job",
+)
+async def retry_project_job(
+    project_id: str,
+    job_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    job_repo: IIngestionJobRepository = Depends(get_job_repository),
+    advisory_service: OsvService = Depends(get_osv_service),
+    matching_service: VersionMatchingService = Depends(get_version_matching_service),
+) -> JobRetryResponse:
+    """Retry an eligible failed or partial ingestion job, creating a new linked run record."""
+    original_job = job_repo.get_job(project_id=project.id, job_id=job_id)
+    if not original_job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ingestion job '{job_id}' not found for project '{project.id}'.",
+        )
+
+    if original_job.status not in (JobStatus.FAILED, JobStatus.PARTIAL):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot retry job with status '{original_job.status}'. Only failed or partial jobs are eligible for retry.",
+        )
+
+    if not original_job.retry_eligible:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Job is not eligible for retry.",
+        )
+
+    user_identity = getattr(current_user, "email", None) or str(current_user.id)
+    new_job_id = str(uuid.uuid4())
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+
+    new_job = IngestionJobRecord(
+        id=new_job_id,
+        project_id=project.id,
+        service_id=original_job.service_id,
+        service_name=original_job.service_name,
+        job_type=original_job.job_type,
+        status=JobStatus.QUEUED,
+        stage="Queued for retry",
+        created_at=now_ts,
+        initiated_by=user_identity,
+        filename=original_job.filename,
+        secondary_filename=original_job.secondary_filename,
+        sha256_hash=original_job.sha256_hash,
+        ecosystem=original_job.ecosystem,
+        import_method=original_job.import_method,
+        fidelity=original_job.fidelity,
+        retry_of_job_id=original_job.id,
+    )
+    job_repo.upsert_job(new_job)
+
+    if original_job.job_type == JobType.OSV_SYNC:
+        await advisory_service.import_project_advisories(
+            project.id,
+            force_refresh=True,
+            initiated_by=user_identity,
+            job_id=new_job_id,
+        )
+    elif original_job.job_type == JobType.VERSION_MATCHING:
+        matching_service.match_project_vulnerabilities(
+            project.id,
+            initiated_by=user_identity,
+            job_id=new_job_id,
+        )
+    elif original_job.job_type == JobType.DEPENDENCY_IMPORT:
+        # Dependency lockfiles cannot be retried without re-uploading the file
+        new_job.status = JobStatus.FAILED
+        new_job.stage = "Retry failed: dependency file must be re-uploaded."
+        new_job.error_summary = "Lockfile import retry requires re-uploading the dependency file."
+        new_job.completed_at = now_ts
+        job_repo.upsert_job(new_job)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lockfile import retry requires re-uploading the dependency file.",
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported job type '{original_job.job_type}' for retry.",
+        )
+
+    executed_job = job_repo.get_job(project.id, new_job_id) or new_job
+
+    return JobRetryResponse(
+        message=f"Job {job_id} successfully retried as {new_job_id}.",
+        original_job_id=original_job.id,
+        new_job=IngestionJobResponse(
+            id=executed_job.id,
+            project_id=executed_job.project_id,
+            job_type=executed_job.job_type,
+            status=executed_job.status,
+            stage=executed_job.stage,
+            service_id=executed_job.service_id,
+            service_name=executed_job.service_name,
+            processed_items=executed_job.processed_items,
+            total_items=executed_job.total_items,
+            percentage=executed_job.percentage,
+            discovered_items=executed_job.discovered_items,
+            created_items=executed_job.created_items,
+            updated_items=executed_job.updated_items,
+            reused_items=executed_job.reused_items,
+            skipped_items=executed_job.skipped_items,
+            failed_items=executed_job.failed_items,
+            error_summary=executed_job.error_summary,
+            errors=executed_job.errors,
+            warnings=executed_job.warnings,
+            retry_eligible=executed_job.retry_eligible,
+            retry_of_job_id=executed_job.retry_of_job_id,
+            created_at=executed_job.created_at,
+            started_at=executed_job.started_at,
+            completed_at=executed_job.completed_at,
+            duration_ms=executed_job.duration_ms,
+            initiated_by=executed_job.initiated_by,
+            filename=executed_job.filename,
+            secondary_filename=executed_job.secondary_filename,
+            sha256_hash=executed_job.sha256_hash,
+            ecosystem=executed_job.ecosystem,
+            import_method=executed_job.import_method,
+            fidelity=executed_job.fidelity,
+        ),
+    )
+
 
 

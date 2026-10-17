@@ -9,7 +9,9 @@ import {
   ExternalLink,
   Search,
   CheckCircle2,
+  History,
 } from 'lucide-react'
+import { Link } from 'react-router'
 import { importAdvisories, getProjectAdvisories, ProjectApiError } from '../projects/projectApi'
 import type { OsvImportSummary, Project, ProjectAdvisory } from '../projects/types'
 
@@ -245,6 +247,16 @@ export function OsvAdvisoryCard({ project }: OsvAdvisoryCardProps) {
               ))}
             </div>
           )}
+
+          <div className="flex justify-end pt-1">
+            <Link
+              to="/history"
+              className="inline-flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 font-medium transition-colors"
+            >
+              <History className="h-3.5 w-3.5" />
+              <span>View run in Ingestion History &rarr;</span>
+            </Link>
+          </div>
         </div>
       )}
 

@@ -96,7 +96,7 @@ export function ImportDataPage() {
           </div>
           <div>
             <div className="font-semibold text-white">Parse &amp; Persist Graph</div>
-            <div className="text-[11px] text-slate-400">Upload package-lock.json (US-102)</div>
+            <div className="text-[11px] text-slate-400">Upload lockfile / manifest (US-102)</div>
           </div>
         </div>
 
@@ -127,7 +127,7 @@ export function ImportDataPage() {
           <div className="space-y-2">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <UploadCloud className="h-4 w-4 text-sky-400" />
-              <span>Stage 1: Dependency Lockfile Ingestion (US-102)</span>
+              <span>Stage 1: Multi-Ecosystem Dependency Ingestion (US-102)</span>
             </div>
             <LockfileImportCard project={activeProject} />
           </div>

@@ -21,6 +21,9 @@ class IDependencyRepository(Protocol):
         filename: str,
         sha256_hash: str,
         parsed_graph: ParsedGraph,
+        secondary_filename: str | None = None,
+        ecosystem: str | None = None,
+        import_method: str | None = None,
     ) -> ImportSummaryResponse: ...
 
     def get_import_by_hash(
@@ -75,6 +78,9 @@ class FalkorDependencyRepository:
         filename: str,
         sha256_hash: str,
         parsed_graph: ParsedGraph,
+        secondary_filename: str | None = None,
+        ecosystem: str | None = None,
+        import_method: str | None = None,
     ) -> ImportSummaryResponse:
         graph = self.client.get_graph()
         service_id = f"{project_id}:{service_name}"
@@ -174,6 +180,9 @@ class FalkorDependencyRepository:
         edges_reused = existing_edges_count
         edges_created = max(0, total_edges_count - existing_edges_count)
 
+        detected_ecosystem = ecosystem or (parsed_graph.packages[0].ecosystem if parsed_graph.packages else "npm")
+        detected_method = import_method or parsed_graph.parser_id
+
         return ImportSummaryResponse(
             project_id=project_id,
             service_name=service_name,
@@ -189,6 +198,10 @@ class FalkorDependencyRepository:
             errors=[],
             status=status,
             imported_at=now,
+            fidelity=parsed_graph.fidelity,
+            ecosystem=detected_ecosystem,
+            import_method=detected_method,
+            secondary_filename=secondary_filename,
         )
 
 
@@ -219,6 +232,9 @@ class InMemoryDependencyRepository:
         filename: str,
         sha256_hash: str,
         parsed_graph: ParsedGraph,
+        secondary_filename: str | None = None,
+        ecosystem: str | None = None,
+        import_method: str | None = None,
     ) -> ImportSummaryResponse:
         service_id = f"{project_id}:{service_name}"
         now = int(datetime.now(timezone.utc).timestamp())
@@ -278,6 +294,9 @@ class InMemoryDependencyRepository:
         }
         self._imports.append(imp)
 
+        detected_ecosystem = ecosystem or (parsed_graph.packages[0].ecosystem if parsed_graph.packages else "npm")
+        detected_method = import_method or parsed_graph.parser_id
+
         return ImportSummaryResponse(
             project_id=project_id,
             service_name=service_name,
@@ -293,6 +312,10 @@ class InMemoryDependencyRepository:
             errors=[],
             status="completed",
             imported_at=now,
+            fidelity=parsed_graph.fidelity,
+            ecosystem=detected_ecosystem,
+            import_method=detected_method,
+            secondary_filename=secondary_filename,
         )
 
     def clear(self) -> None:

@@ -189,10 +189,45 @@ def parse_npm_lockfile(content: str | bytes, filename: str = "package-lock.json"
         for src, dst in edges
     ]
 
+    lockfile_ver = str(data.get("lockfileVersion", "1")) if isinstance(data, dict) else "unknown"
+
     return ParsedGraph(
         packages=list(unique_packages.values()),
         edges=edge_models,
         direct_dependency_ids=list(direct_dep_ids),
         skipped_entries=skipped_entries,
         warnings=warnings,
+        parser_id="npm_lockfile",
+        format_version=lockfile_ver,
+        fidelity="exact_lockfile",
     )
+
+
+from vulnify.parsers.models import BaseDependencyParser
+
+
+class NpmLockfileParser(BaseDependencyParser):
+    """Deterministic parser for npm lockfiles implementing BaseDependencyParser."""
+
+    @property
+    def parser_id(self) -> str:
+        return "npm_lockfile"
+
+    @property
+    def ecosystem(self) -> str:
+        return "npm"
+
+    @property
+    def supported_filenames(self) -> list[str]:
+        return ["package-lock.json", "npm-shrinkwrap.json"]
+
+    def parse(
+        self,
+        content: str | bytes,
+        filename: str = "package-lock.json",
+        secondary_content: str | bytes | None = None,
+        secondary_filename: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ParsedGraph:
+        return parse_npm_lockfile(content, filename=filename)
+

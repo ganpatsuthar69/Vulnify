@@ -80,6 +80,14 @@ class GraphClient:
             self._graph.query("CREATE INDEX FOR (v:Vulnerability) ON (v.id)")
         except Exception:
             pass
+        try:
+            self._graph.query("CREATE INDEX FOR (ij:IngestionJob) ON (ij.id)")
+        except Exception:
+            pass
+        try:
+            self._graph.query("CREATE INDEX FOR (ij:IngestionJob) ON (ij.project_id)")
+        except Exception:
+            pass
 
 
 @lru_cache
