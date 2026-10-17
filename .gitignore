@@ -1,1 +1,10 @@
 Docs/
+
+# Antigravity / AI Agent Rules
+/AGENTS.md
+/GEMINI.md
+/.agents/rules/
+
+# Folder-specific agent instructions
+/frontend/AGENTS.md
+/backend/AGENTS.md
