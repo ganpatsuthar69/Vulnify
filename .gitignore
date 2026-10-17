@@ -1,10 +1,67 @@
-Docs/
+# ── Secrets & env ──────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env*.local
 
-# Antigravity / AI Agent Rules
+# ── Python / Backend ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# ── Node / Frontend ───────────────────────────────────────────
+node_modules/
+dist-ssr/
+*.local
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ── OS files ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ── Editor / IDE ──────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Docker ────────────────────────────────────────────────────
+docker-data/
+
+# ── Antigravity / AI Agent Rules ──────────────────────────────
 /AGENTS.md
 /GEMINI.md
 /.agents/rules/
-
-# Folder-specific agent instructions
 /frontend/AGENTS.md
 /backend/AGENTS.md
+
+gdocs/

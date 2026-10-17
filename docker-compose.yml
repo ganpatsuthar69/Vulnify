@@ -1,0 +1,17 @@
+services:
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: vulnify-falkordb
+    ports:
+      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:3000:3000"
+    environment:
+      REDIS_ARGS: "--requirepass ${FALKORDB_PASSWORD:?Set FALKORDB_PASSWORD in backend/.env}"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - falkordb_data:/data
+    restart: unless-stopped
+
+volumes:
+  falkordb_data:
