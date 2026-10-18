@@ -13,6 +13,8 @@ import {
   ExternalLink,
   RotateCcw,
   X,
+  User,
+  ShieldCheck,
 } from 'lucide-react'
 import { useProjects } from '@/features/projects/ProjectProvider'
 import { getProjectVulnerabilities } from '@/features/projects/projectApi'
@@ -494,47 +496,155 @@ export function AiInvestigationPage() {
     }
   }
 
-  // Helper to parse markdown links safely into native React Router Links or safe spans
-  const renderFormattedText = (rawText: string) => {
-    // Matches markdown links like [find-123](/findings/find-123)
-    const linkRegex = /\[(.*?)\]\((.*?)\)/g
-    const elements: React.ReactNode[] = []
-    let lastIndex = 0
-    let match: RegExpExecArray | null
+  // Inline markdown token parser (links, bold, code, italics)
+  const renderInlineTokens = (text: string): React.ReactNode[] => {
+    const tokenRegex = /(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g
+    const parts = text.split(tokenRegex)
 
-    while ((match = linkRegex.exec(rawText)) !== null) {
-      if (match.index > lastIndex) {
-        elements.push(rawText.substring(lastIndex, match.index))
-      }
-      const label = match[1]!
-      const href = match[2]!
+    return parts.map((part, index) => {
+      if (!part) return null
 
-      if (href.startsWith('/findings/')) {
-        elements.push(
-          <Link
-            key={`link-${match.index}`}
-            to={href}
-            className="text-sky-400 hover:text-sky-300 font-semibold underline inline-flex items-center gap-0.5"
-          >
-            <span>{label}</span>
-            <ExternalLink className="h-3 w-3 inline" />
-          </Link>,
-        )
-      } else {
-        elements.push(
-          <span key={`span-${match.index}`} className="font-semibold text-slate-200">
+      // Markdown link: [label](url)
+      const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+      if (linkMatch) {
+        const label = linkMatch[1]!
+        const href = linkMatch[2]!
+        if (href.startsWith('/findings/') || href.startsWith('/')) {
+          return (
+            <Link
+              key={index}
+              to={href}
+              className="text-sky-300 hover:text-sky-200 font-semibold underline underline-offset-2 inline-flex items-center gap-0.5 transition-colors"
+            >
+              <span>{label}</span>
+              <ExternalLink className="h-3 w-3 inline text-sky-400" />
+            </Link>
+          )
+        }
+        return (
+          <span key={index} className="font-semibold text-white">
             {label}
-          </span>,
+          </span>
         )
       }
-      lastIndex = match.index + match[0].length
-    }
 
-    if (lastIndex < rawText.length) {
-      elements.push(rawText.substring(lastIndex))
-    }
+      // Bold: **text**
+      if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
+        return (
+          <strong key={index} className="font-bold text-white">
+            {part.slice(2, -2)}
+          </strong>
+        )
+      }
 
-    return elements
+      // Inline code: `code`
+      if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+        return (
+          <code
+            key={index}
+            className="rounded px-1.5 py-0.5 bg-[#090f17] border border-slate-700/80 text-sky-300 font-mono text-[11px] shadow-xs"
+          >
+            {part.slice(1, -1)}
+          </code>
+        )
+      }
+
+      // Italic: *text*
+      if (part.startsWith('*') && part.endsWith('*') && part.length >= 2) {
+        return (
+          <em key={index} className="text-slate-300 italic">
+            {part.slice(1, -1)}
+          </em>
+        )
+      }
+
+      return <span key={index}>{part}</span>
+    })
+  }
+
+  // Enhanced block-level markdown renderer for agent messages
+  const renderFormattedText = (rawText: string) => {
+    if (!rawText) return null
+
+    const lines = rawText.split('\n')
+    return (
+      <div className="space-y-2 text-xs leading-relaxed">
+        {lines.map((line, lineIdx) => {
+          const trimmed = line.trim()
+          if (!trimmed) {
+            return <div key={lineIdx} className="h-1" />
+          }
+
+          // Heading 3: ### Title
+          if (trimmed.startsWith('### ')) {
+            return (
+              <h4
+                key={lineIdx}
+                className="text-xs font-bold text-sky-300 mt-2.5 mb-1 flex items-center gap-1.5 tracking-wide uppercase"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                {renderInlineTokens(trimmed.slice(4))}
+              </h4>
+            )
+          }
+
+          // Heading 2: ## Title
+          if (trimmed.startsWith('## ')) {
+            return (
+              <h3
+                key={lineIdx}
+                className="text-sm font-bold text-white border-b border-slate-750 pb-1 mt-3 mb-1.5"
+              >
+                {renderInlineTokens(trimmed.slice(3))}
+              </h3>
+            )
+          }
+
+          // Bullet point: - or *
+          if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+            return (
+              <div key={lineIdx} className="flex items-start gap-2 pl-1 my-0.5 text-slate-200">
+                <span className="text-sky-400 mt-1 text-[8px] leading-none shrink-0">•</span>
+                <div className="flex-1">{renderInlineTokens(trimmed.slice(2))}</div>
+              </div>
+            )
+          }
+
+          // Numbered list: 1. , 2. , etc.
+          const numMatch = trimmed.match(/^(\d+)\.\s+(.*)$/)
+          if (numMatch) {
+            return (
+              <div key={lineIdx} className="flex items-start gap-2 pl-1 my-0.5 text-slate-200">
+                <span className="font-mono text-[11px] font-semibold text-sky-400 shrink-0">
+                  {numMatch[1]}.
+                </span>
+                <div className="flex-1">{renderInlineTokens(numMatch[2]!)}</div>
+              </div>
+            )
+          }
+
+          // Note or blockquote: Note: or >
+          if (trimmed.toLowerCase().startsWith('note:') || trimmed.startsWith('> ')) {
+            const content = trimmed.startsWith('> ') ? trimmed.slice(2) : trimmed
+            return (
+              <div
+                key={lineIdx}
+                className="border-l-2 border-sky-400/60 bg-sky-950/20 rounded-r-lg pl-3 py-1.5 my-1.5 text-slate-300 text-[11px]"
+              >
+                {renderInlineTokens(content)}
+              </div>
+            )
+          }
+
+          // Regular paragraph
+          return (
+            <p key={lineIdx} className="text-slate-200 leading-relaxed">
+              {renderInlineTokens(line)}
+            </p>
+          )
+        })}
+      </div>
+    )
   }
 
   const latestToolCall = useMemo(() => {
@@ -650,7 +760,7 @@ export function AiInvestigationPage() {
               type="button"
               onClick={() => handleSendMessage(promptText)}
               disabled={isThinking}
-              className="rounded-lg border border-slate-800 bg-[#0f1822] px-3 py-1.5 text-xs text-slate-300 hover:border-sky-500/50 hover:bg-slate-800/80 hover:text-white transition disabled:opacity-50 text-left"
+              className="rounded-xl border border-slate-800 bg-[#0d1520] hover:bg-[#131f30] hover:border-sky-500/40 px-3.5 py-1.5 text-xs text-slate-300 hover:text-white transition shadow-sm disabled:opacity-50 text-left font-normal cursor-pointer"
             >
               {promptText}
             </button>
@@ -664,42 +774,59 @@ export function AiInvestigationPage() {
         <div
           className={`${
             isTraceOpen ? 'lg:col-span-8' : 'lg:col-span-12'
-          } flex flex-col h-[620px] rounded-xl border border-slate-800 bg-[#0f1822] shadow-xl overflow-hidden`}
+          } flex flex-col h-[640px] rounded-2xl border border-slate-800 bg-[#0d1520] shadow-2xl overflow-hidden`}
         >
           {/* Chat Messages Region */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-slate-800">
+          <div className="flex-1 overflow-y-auto p-5 space-y-5 scrollbar-thin scrollbar-thumb-slate-800 bg-[#090e17]">
             {messages.map((m) => (
               <div
                 key={m.id}
                 className={`flex gap-3 text-xs leading-relaxed ${
-                  m.sender === 'user' ? 'justify-end' : 'justify-start'
+                  m.sender === 'user' ? 'justify-end items-end' : 'justify-start items-start'
                 }`}
               >
                 {m.sender === 'agent' && (
-                  <div className="h-7 w-7 rounded-lg bg-sky-500/20 border border-sky-500/40 flex items-center justify-center shrink-0">
+                  <div className="h-8 w-8 rounded-xl bg-slate-900 border border-sky-500/40 flex items-center justify-center shrink-0 shadow-md shadow-sky-950/30 mt-0.5">
                     <Bot className="h-4 w-4 text-sky-400" />
                   </div>
                 )}
 
                 <div
-                  className={`max-w-[85%] rounded-xl p-4 shadow-sm ${
+                  className={`max-w-[85%] rounded-2xl p-4 shadow-lg ${
                     m.sender === 'user'
-                      ? 'bg-sky-500 text-white rounded-tr-none'
-                      : 'bg-[#0b121a] border border-slate-800 text-slate-200 rounded-tl-none space-y-3'
+                      ? 'bg-gradient-to-br from-sky-600 via-sky-600 to-blue-600 text-white rounded-br-xs border border-sky-400/25 shadow-sky-950/30'
+                      : 'bg-[#121c2a] border border-slate-750 text-slate-100 rounded-tl-xs shadow-black/25 space-y-3'
                   }`}
                 >
+                  {/* Agent Header Badge */}
+                  {m.sender === 'agent' && (
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-white tracking-wide">Vulnify Agent</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[9px] font-medium text-emerald-400">
+                          <ShieldCheck className="h-2.5 w-2.5" />
+                          FalkorDB Grounded
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">{m.timestamp}</span>
+                    </div>
+                  )}
+
                   {/* Tool Activity Steps (Emitted Live via SSE) */}
                   {m.toolCalls && m.toolCalls.length > 0 && (
-                    <div className="space-y-1.5 pb-2 border-b border-slate-800/80">
-                      <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                        <Terminal className="h-3 w-3 text-sky-400" />
-                        <span>Live Tool Execution Steps ({m.toolCalls.length})</span>
+                    <div className="space-y-2 rounded-xl bg-[#0a1018] border border-slate-800 p-3">
+                      <div className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-sky-400">
+                          <Terminal className="h-3.5 w-3.5" />
+                          <span>FalkorDB Graph Queries ({m.toolCalls.length})</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-500">Live Telemetry</span>
                       </div>
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         {m.toolCalls.map((tc) => (
                           <div
                             key={tc.callId}
-                            className="flex items-center justify-between rounded bg-[#0f1822] border border-slate-800/90 px-2.5 py-1 text-[11px] font-mono text-slate-300"
+                            className="flex items-center justify-between rounded-lg bg-[#121c2a] border border-slate-700/60 px-3 py-1.5 text-[11px] font-mono text-slate-200 shadow-sm"
                           >
                             <div className="flex items-center gap-2 truncate">
                               {tc.status === 'running' ? (
@@ -707,24 +834,26 @@ export function AiInvestigationPage() {
                               ) : tc.status === 'completed' ? (
                                 <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" />
                               ) : (
-                                <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
+                                <AlertTriangle className="h-3 w-3 text-rose-400 shrink-0" />
                               )}
                               <span className="font-semibold text-sky-300">{tc.toolName}</span>
                               {tc.queryId && (
-                                <span className="text-[10px] text-slate-500 truncate">
+                                <span className="text-[10px] text-slate-400 truncate">
                                   ({tc.queryId})
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 shrink-0 text-[10px] text-slate-400">
-                              {tc.durationMs !== undefined && <span>{tc.durationMs}ms</span>}
+                            <div className="flex items-center gap-2.5 shrink-0 text-[10px]">
+                              {tc.durationMs !== undefined && (
+                                <span className="text-slate-400">{tc.durationMs}ms</span>
+                              )}
                               <span
-                                className={`px-1.5 py-0.2 rounded text-[9px] uppercase ${
+                                className={`px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider border ${
                                   tc.status === 'completed'
-                                    ? 'bg-emerald-500/15 text-emerald-300'
+                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                                     : tc.status === 'running'
-                                      ? 'bg-amber-500/15 text-amber-300'
-                                      : 'bg-red-500/15 text-red-300'
+                                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                      : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
                                 }`}
                               >
                                 {tc.status}
@@ -736,71 +865,101 @@ export function AiInvestigationPage() {
                     </div>
                   )}
 
-                  {/* Main Message Text with Formatted Finding Links */}
-                  <div className="whitespace-pre-wrap leading-relaxed">
-                    {renderFormattedText(m.text)}
+                  {/* Main Message Text with Formatted Finding Links & Markdown */}
+                  <div className={m.sender === 'user' ? 'text-white' : 'text-slate-200'}>
+                    {m.sender === 'user' ? (
+                      <div className="font-sans text-xs leading-relaxed text-white whitespace-pre-wrap font-medium">
+                        {m.text}
+                      </div>
+                    ) : (
+                      renderFormattedText(m.text)
+                    )}
                     {m.isStreaming && (
-                      <span className="inline-block w-1.5 h-3 ml-1 bg-sky-400 animate-pulse" />
+                      <span className="inline-block w-2 h-3.5 ml-1 bg-sky-400 animate-pulse rounded-xs" />
                     )}
                   </div>
 
                   {/* Error Callout */}
                   {m.isError && m.errorMessage && (
-                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-200 flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200 flex items-start gap-2.5">
+                      <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
                       <div>
-                        <div className="font-semibold">Investigation Error</div>
-                        <div>{m.errorMessage}</div>
+                        <div className="font-semibold text-white">Investigation Error</div>
+                        <div className="mt-0.5 leading-relaxed">{m.errorMessage}</div>
                       </div>
                     </div>
                   )}
 
                   {/* Cancellation Note */}
                   {m.isCancelled && (
-                    <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200 flex items-center gap-1.5">
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-200 flex items-center gap-1.5">
                       <StopCircle className="h-3.5 w-3.5 text-amber-400" />
                       <span>{m.statusText || 'Run was cancelled by user.'}</span>
                     </div>
                   )}
 
-                  {/* Timestamp, Status, and Trace Drawer Action (US-603) */}
-                  <div className="text-[10px] text-slate-500 flex items-center justify-between mt-2 pt-2 border-t border-slate-800/60">
-                    <div className="flex items-center gap-2">
-                      {m.runId && (
-                        <>
-                          <span className="font-mono text-slate-400">Run: {m.runId.substring(0, 14)}...</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTraceDrawerRunId(m.runId!)
-                              setIsTraceDrawerOpen(true)
-                            }}
-                            className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 font-medium transition-colors"
-                            title="Open persistent execution audit trace"
-                          >
-                            <Database className="h-3 w-3" />
-                            <span>View Audit Trace</span>
-                          </button>
-                        </>
-                      )}
-                      {m.isStreaming && currentStatusText && (
-                        <span className="text-sky-400 animate-pulse">{currentStatusText}</span>
-                      )}
+                  {/* Footer: User timestamp vs Agent trace & status */}
+                  {m.sender === 'user' ? (
+                    <div className="flex items-center justify-end gap-1.5 mt-2.5 pt-2 border-t border-sky-400/30 text-[10px] text-sky-100/90 font-mono">
+                      <Clock className="h-3 w-3 text-sky-200" />
+                      <span>{m.timestamp}</span>
                     </div>
-                    <span>{m.timestamp}</span>
-                  </div>
+                  ) : (
+                    (m.runId || m.isStreaming) && (
+                      <div className="text-[10px] text-slate-400 flex items-center justify-between mt-2 pt-2 border-t border-slate-800">
+                        <div className="flex items-center gap-2">
+                          {m.runId && (
+                            <>
+                              <span className="font-mono text-slate-400 bg-slate-900/80 px-2 py-0.5 rounded border border-slate-800">
+                                Run: {m.runId.substring(0, 14)}...
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTraceDrawerRunId(m.runId!)
+                                  setIsTraceDrawerOpen(true)
+                                }}
+                                className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 font-medium transition-colors hover:underline"
+                                title="Open persistent execution audit trace"
+                              >
+                                <Database className="h-3 w-3" />
+                                <span>View Audit Trace</span>
+                              </button>
+                            </>
+                          )}
+                          {m.isStreaming && currentStatusText && (
+                            <span className="text-sky-400 animate-pulse flex items-center gap-1.5 font-sans font-medium">
+                              <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping" />
+                              {currentStatusText}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  )}
                 </div>
+
+                {m.sender === 'user' && (
+                  <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 border border-sky-400/40 flex items-center justify-center shrink-0 shadow-md shadow-sky-950/40 mt-0.5">
+                    <User className="h-4 w-4 text-white" />
+                  </div>
+                )}
               </div>
             ))}
 
             {isThinking && (
               <div className="flex gap-3 text-xs justify-start items-center">
-                <div className="h-7 w-7 rounded-lg bg-sky-500/20 border border-sky-500/40 flex items-center justify-center shrink-0 animate-pulse">
+                <div className="h-8 w-8 rounded-xl bg-slate-900 border border-sky-500/40 flex items-center justify-center shrink-0 animate-pulse shadow-md shadow-sky-950/30">
                   <Bot className="h-4 w-4 text-sky-400" />
                 </div>
-                <div className="rounded-xl bg-[#0b121a] border border-slate-800 p-3 text-slate-300 flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-sky-400 animate-ping" />
-                  <span>{currentStatusText || 'Executing graph tools and synthesizing evidence...'}</span>
+                <div className="rounded-2xl rounded-tl-xs bg-[#121c2a] border border-slate-750 p-3.5 text-slate-200 flex items-center gap-3 shadow-lg shadow-black/20">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500"></span>
+                  </span>
+                  <span className="font-medium text-xs text-sky-200">
+                    {currentStatusText || 'Executing graph tools and synthesizing evidence...'}
+                  </span>
                 </div>
               </div>
             )}
@@ -808,13 +967,13 @@ export function AiInvestigationPage() {
           </div>
 
           {/* Input & Action Bar */}
-          <div className="border-t border-slate-800 bg-[#0b121a] p-3">
+          <div className="border-t border-slate-800/90 bg-[#0d1520] p-3.5">
             <form
               onSubmit={(e) => {
                 e.preventDefault()
                 handleSendMessage()
               }}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2.5"
             >
               <input
                 type="text"
@@ -822,26 +981,26 @@ export function AiInvestigationPage() {
                 onChange={(e) => setInputQuery(e.target.value)}
                 placeholder="Ask about exposure paths, priority reasons, or candidate upgrades..."
                 disabled={isThinking || !activeProject}
-                className="flex-1 rounded-lg border border-slate-800 bg-[#0f1822] px-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-50"
+                className="flex-1 rounded-xl border border-slate-750 bg-[#121c2a] px-4 py-2.5 text-xs text-white placeholder-slate-400 shadow-inner focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500/50 disabled:opacity-50"
               />
 
               {isThinking ? (
                 <button
                   type="button"
                   onClick={handleStopRun}
-                  className="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-500/25 transition"
+                  className="flex items-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-500/15 px-4 py-2.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/25 transition shadow-sm"
                 >
                   <StopCircle className="h-4 w-4" />
-                  Stop Run
+                  <span>Stop Run</span>
                 </button>
               ) : (
                 <button
                   type="submit"
                   disabled={!inputQuery.trim() || !activeProject}
-                  className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-5 py-2.5 text-xs font-semibold text-white hover:from-sky-400 hover:to-blue-500 shadow-md shadow-sky-950/40 disabled:opacity-40 disabled:cursor-not-allowed transition"
                 >
                   <Send className="h-3.5 w-3.5" />
-                  Ask Agent
+                  <span>Ask Agent</span>
                 </button>
               )}
             </form>
@@ -850,11 +1009,11 @@ export function AiInvestigationPage() {
 
         {/* Right Column: FalkorDB Query Transparency Drawer */}
         {isTraceOpen && (
-          <div className="lg:col-span-4 h-[620px] flex flex-col rounded-xl border border-slate-800 bg-[#0f1822] shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-800/80 px-4 py-3">
+          <div className="lg:col-span-4 h-[640px] flex flex-col rounded-2xl border border-slate-800 bg-[#0d1520] shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-800/90 px-4 py-3.5 bg-[#0a1017]">
               <div className="flex items-center gap-2">
                 <Database className="h-4 w-4 text-sky-400" />
-                <h3 className="text-xs font-semibold text-white uppercase tracking-wider">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
                   FalkorDB Tool Trace
                 </h3>
               </div>
@@ -866,22 +1025,22 @@ export function AiInvestigationPage() {
                       setTraceDrawerRunId(activeRunId)
                       setIsTraceDrawerOpen(true)
                     }}
-                    className="rounded bg-sky-500/15 hover:bg-sky-500/25 text-[10px] font-mono text-sky-300 px-2 py-0.5 border border-sky-500/30 transition"
+                    className="rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-[10px] font-mono text-sky-300 px-2.5 py-1 border border-sky-500/30 transition"
                   >
                     Open Drawer
                   </button>
                 )}
-                <span className="rounded bg-slate-800 text-[10px] font-mono text-slate-300 px-2 py-0.5 border border-slate-700">
+                <span className="rounded-lg bg-slate-800 text-[10px] font-mono text-slate-300 px-2 py-0.5 border border-slate-700">
                   FastMCP
                 </span>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-mono">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-mono bg-[#090e17]">
               {latestToolCall ? (
                 <div className="space-y-3">
-                  <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-3 space-y-1.5">
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                  <div className="rounded-xl border border-slate-750 bg-[#121c2a] p-3.5 space-y-1.5 shadow-sm">
+                    <div className="text-[10px] font-semibold text-sky-400 uppercase tracking-wider">
                       Executed Tool
                     </div>
                     <div className="text-sky-300 font-semibold">{latestToolCall.toolName}</div>
@@ -890,40 +1049,41 @@ export function AiInvestigationPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-3 space-y-1.5">
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                  <div className="rounded-xl border border-slate-750 bg-[#121c2a] p-3.5 space-y-1.5 shadow-sm">
+                    <div className="text-[10px] font-semibold text-sky-400 uppercase tracking-wider">
                       Parameterized Inputs
                     </div>
-                    <pre className="text-[11px] text-slate-300 overflow-x-auto whitespace-pre-wrap">
+                    <pre className="text-[11px] text-sky-200 bg-[#090e15] border border-slate-800/80 p-2.5 rounded-lg overflow-x-auto whitespace-pre-wrap font-mono">
                       {JSON.stringify(latestToolCall.inputs, null, 2)}
                     </pre>
                   </div>
 
-                  <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-3 space-y-1.5">
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                  <div className="rounded-xl border border-slate-750 bg-[#121c2a] p-3.5 space-y-1.5 shadow-sm">
+                    <div className="text-[10px] font-semibold text-sky-400 uppercase tracking-wider">
                       Tool Result Summary
                     </div>
-                    <div className="text-[11px] text-slate-300 font-sans leading-relaxed">
+                    <div className="text-[11px] text-slate-200 font-sans leading-relaxed">
                       {latestToolCall.resultSummary || 'Operation completed successfully.'}
                     </div>
                     {latestToolCall.durationMs !== undefined && (
-                      <div className="text-[10px] text-slate-500 pt-1">
-                        Execution time: {latestToolCall.durationMs}ms
+                      <div className="text-[10px] text-slate-400 pt-1 flex items-center gap-1 font-mono">
+                        <Clock className="h-3 w-3 text-slate-500" />
+                        <span>Execution time: {latestToolCall.durationMs}ms</span>
                       </div>
                     )}
                   </div>
 
                   {latestToolCall.evidenceReferences &&
                     latestToolCall.evidenceReferences.length > 0 && (
-                      <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-3 space-y-1.5">
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                      <div className="rounded-xl border border-slate-750 bg-[#121c2a] p-3.5 space-y-1.5 shadow-sm">
+                        <div className="text-[10px] font-semibold text-sky-400 uppercase tracking-wider">
                           Referenced Evidence
                         </div>
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1.5">
                           {latestToolCall.evidenceReferences.map((refId) => (
                             <span
                               key={refId}
-                              className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-sky-300"
+                              className="px-2 py-0.5 rounded bg-slate-900 border border-slate-750 text-[10px] text-sky-300 font-mono"
                             >
                               {refId}
                             </span>
@@ -943,7 +1103,7 @@ export function AiInvestigationPage() {
               )}
             </div>
 
-            <div className="border-t border-slate-800/80 p-3 bg-[#0b121a] text-[10px] text-slate-500 font-sans flex items-center justify-between">
+            <div className="border-t border-slate-800/90 p-3 bg-[#0a1017] text-[10px] text-slate-400 font-sans flex items-center justify-between">
               <span>FastMCP Registry &bull; Bounded Traversals</span>
               <span className="text-emerald-400 font-medium">10-Step Budget</span>
             </div>

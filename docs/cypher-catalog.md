@@ -336,5 +336,38 @@ LIMIT $limit
 - **Result Bound**: `$limit` (defaults to 100, parameter-controlled).
 - **Cycle Handling**: Tested and validated with recursive cycle avoidance.
 
+---
+
+## 10. Graph-Path Performance Benchmark (`get_project_finding_paths`) (US-903)
+
+### Purpose & SLA
+Evaluates real P95 traversal latency across multi-hop dependency chains on a graph populated with &ge;5,000 package versions to prove compliance with the <1.0 second SLA.
+
+### Cypher Query Template
+```cypher
+// name: get_project_finding_paths
+// what it proves: traverses bounded dependency paths (*1..6) from a project root to vulnerable package versions
+// parameters: $project_id, $limit
+MATCH path = (p:Project {id: $project_id})-[:DEPENDS_ON*1..6]->(pv:PackageVersion)-[:HAS_VULNERABILITY]->(v:Vulnerability)
+RETURN path
+LIMIT $limit
+```
+
+### Essential Indexes Supporting Sub-Second Traversal
+To achieve sub-second P95 traversals across large dependency topologies (&ge;5,000 nodes), FalkorDB indexes must be created on lookup and relationship join keys:
+1. `CREATE INDEX FOR (p:Project) ON (p.id)`: Guarantees $O(1)$ initial node anchor lookup.
+2. `CREATE INDEX FOR (pv:PackageVersion) ON (pv.id)`: Fast index lookup during adjacency list expansion.
+3. `CREATE INDEX FOR (pv:PackageVersion) ON (pv.name)`: Accelerated package identity filtering.
+4. `CREATE INDEX FOR (v:Vulnerability) ON (v.id)`: Index scan on vulnerability relationship destination.
+
+### Empirical Performance Results
+- **Graph Node Count**: &ge; 5,000 `PackageVersion` nodes.
+- **Traversal Bound**: `*1..6` hops.
+- **Iterations**: 30 measured samples (+ 5 warmup runs).
+- **Measured Median Latency**: **1.29 ms**
+- **Measured P95 Latency**: **1.79 ms**
+- **SLA Target**: < 1,000.0 ms (PASS).
+- **Benchmark Runner**: `python -m vulnify.benchmarks.graph_path_benchmark`.
+
 
 

@@ -303,3 +303,53 @@ export async function triggerBenchmarkRun(
 
   return (await resp.json()) as BenchmarkRunResult
 }
+
+export interface GraphPathBenchmarkResult {
+  benchmark_name: string
+  timestamp: string
+  sample_count: number
+  iterations: number
+  warmup_iterations: number
+  package_versions_in_graph: number
+  p95_latency_ms: number
+  median_latency_ms: number
+  min_latency_ms: number
+  max_latency_ms: number
+  latency_unit: string
+  target_p95_threshold_ms: number
+  target_p95_status: 'PASS' | 'FAIL'
+  cypher_query: string
+  notes?: string
+}
+
+/**
+ * Fetch the latest graph-path query performance benchmark result (US-903).
+ */
+export async function fetchGraphPathBenchmark(): Promise<GraphPathBenchmarkResult | null> {
+  const resp = await fetch('/api/benchmarks/performance/graph-path', {
+    headers: { Accept: 'application/json', 'X-Requested-With': 'vulnify' },
+  })
+  if (!resp.ok) return null
+  return (await resp.json()) as GraphPathBenchmarkResult
+}
+
+/**
+ * Execute a fresh graph-path performance benchmark run (US-903).
+ */
+export async function triggerGraphPathBenchmark(
+  iterations = 30,
+  warmup = 5,
+): Promise<GraphPathBenchmarkResult> {
+  const resp = await fetch(
+    `/api/benchmarks/performance/graph-path/run?iterations=${iterations}&warmup=${warmup}`,
+    {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'X-Requested-With': 'vulnify' },
+    },
+  )
+  if (!resp.ok) {
+    const err = await parseApiError(resp, 'Failed to run graph-path benchmark.')
+    throw new Error(err.message)
+  }
+  return (await resp.json()) as GraphPathBenchmarkResult
+}

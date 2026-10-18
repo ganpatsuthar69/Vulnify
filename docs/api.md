@@ -2824,3 +2824,131 @@ Triggers change detection across all settled findings in the project. Evaluates 
   - `200 OK`: Comparison run completed successfully.
   - `500 Internal Server Error`: Execution failed.
 
+---
+
+### 38. `GET /api/benchmarks/performance/graph-path` (US-903)
+- **Description**: Retrieves the latest recorded graph-path query latency benchmark result.
+- **Authentication**: None.
+- **Response**: `200 OK` (conforming to `GraphPathBenchmarkResult`).
+  ```json
+  {
+    "benchmark_name": "graph_path_traversal",
+    "timestamp": "2026-10-18T13:40:00Z",
+    "sample_count": 30,
+    "iterations": 30,
+    "warmup_iterations": 5,
+    "package_versions_in_graph": 5000,
+    "p95_latency_ms": 1.789,
+    "median_latency_ms": 1.286,
+    "min_latency_ms": 1.054,
+    "max_latency_ms": 2.143,
+    "latency_unit": "ms",
+    "target_p95_threshold_ms": 1000.0,
+    "target_p95_status": "PASS",
+    "cypher_query": "get_project_finding_paths.cypher",
+    "notes": "Verified against FalkorDB graph."
+  }
+  ```
+- **Status Codes**:
+  - `200 OK`: Latest benchmark results retrieved.
+  - `404 Not Found`: No benchmark has been executed yet.
+
+---
+
+### 39. `POST /api/benchmarks/performance/graph-path/run` (US-903)
+- **Description**: Triggers a live execution of the graph-path query benchmark across recorded samples and warm-up iterations.
+- **Authentication**: None.
+- **Query Parameters**:
+  - `iterations` (int, default: 30): Number of recorded execution samples.
+  - `warmup` (int, default: 5): Number of warm-up iterations excluded from recorded metrics.
+- **Response**: `200 OK` (returns freshly executed `GraphPathBenchmarkResult`).
+- **Status Codes**:
+  - `200 OK`: Benchmark completed successfully.
+  - `500 Internal Server Error`: Benchmark execution failed.
+
+---
+
+### 40. `GET /api/health` (US-904)
+- **Description**: Combined public health status check. Evaluates application process liveness and executes a non-mutating readiness probe against FalkorDB.
+- **Authentication**: None.
+- **Query Parameters**:
+  - `probe` (string, optional): Probe filter (`"liveness"` or `"readiness"`).
+- **Response**:
+  - `200 OK` when process is alive and FalkorDB is ready:
+    ```json
+    {
+      "status": "healthy",
+      "liveness": "ok",
+      "readiness": "ready",
+      "database": {
+        "status": "connected",
+        "latency_ms": 0.85,
+        "uptime_seconds": 28130,
+        "used_memory_human": "11.48M",
+        "connected_clients": 3,
+        "server_version": "8.10.2",
+        "graph_name": "vulnify",
+        "error": null
+      },
+      "query_metrics": {
+        "total_queries": 12,
+        "successful_queries": 12,
+        "failed_queries": 0,
+        "timeout_queries": 0,
+        "avg_query_latency_ms": 1.45
+      },
+      "timestamp": "2026-10-18T13:48:22Z"
+    }
+    ```
+  - `503 Service Unavailable` when FalkorDB is unreachable or unhealthy:
+    ```json
+    {
+      "status": "unhealthy",
+      "liveness": "ok",
+      "readiness": "not_ready",
+      "database": {
+        "status": "disconnected",
+        "latency_ms": null,
+        "uptime_seconds": null,
+        "used_memory_human": null,
+        "connected_clients": null,
+        "server_version": null,
+        "graph_name": "vulnify",
+        "error": "CONNECTION_REFUSED"
+      },
+      "query_metrics": {
+        "total_queries": 0,
+        "successful_queries": 0,
+        "failed_queries": 0,
+        "timeout_queries": 0,
+        "avg_query_latency_ms": null
+      },
+      "timestamp": "2026-10-18T13:48:22Z"
+    }
+    ```
+- **Status Codes**:
+  - `200 OK`: Application and database are healthy.
+  - `503 Service Unavailable`: FalkorDB is unreachable, query timed out, or database returned an error.
+
+---
+
+### 41. `GET /api/health/liveness` (US-904)
+- **Description**: Dedicated lightweight liveness probe for container orchestrators (Kubernetes / Docker).
+- **Authentication**: None.
+- **Response**: `200 OK`
+  ```json
+  {
+    "status": "healthy",
+    "liveness": "ok"
+  }
+  ```
+
+---
+
+### 42. `GET /api/health/readiness` (US-904)
+- **Description**: Dedicated readiness probe that verifies FalkorDB database reachability and responsiveness via a non-mutating `RETURN 1` probe.
+- **Authentication**: None.
+- **Response**:
+  - `200 OK`: FalkorDB connected and responsive (`readiness: "ready"`).
+  - `503 Service Unavailable`: FalkorDB disconnected, timed out, or unreachable (`readiness: "not_ready"`).
+

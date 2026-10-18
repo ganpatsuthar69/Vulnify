@@ -1,5 +1,6 @@
 """Pydantic v2 data models for Vulnify user management, authentication, and health."""
 
+from datetime import datetime, timezone
 import re
 from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -67,8 +68,64 @@ class RoleUpdateRequest(BaseModel):
         return cleaned
 
 
+class DatabaseHealthMetrics(BaseModel):
+    status: Literal["connected", "unhealthy", "disconnected", "degraded"] = Field(
+        ..., description="Connectivity and health status of FalkorDB"
+    )
+    latency_ms: float | None = Field(
+        None, description="Round-trip latency in milliseconds of a lightweight read-only probe"
+    )
+    uptime_seconds: int | None = Field(
+        None, description="Server uptime in seconds reported by database"
+    )
+    used_memory_human: str | None = Field(
+        None, description="Human-readable memory usage reported by database"
+    )
+    connected_clients: int | None = Field(
+        None, description="Number of currently connected client sessions"
+    )
+    server_version: str | None = Field(
+        None, description="Database server software version"
+    )
+    graph_name: str | None = Field(
+        None, description="Target FalkorDB graph namespace"
+    )
+    error: str | None = Field(
+        None, description="Safe error category when database is unavailable (secrets redacted)"
+    )
+
+
+class QueryMetrics(BaseModel):
+    total_queries: int = Field(0, description="Total Cypher queries executed since process start")
+    successful_queries: int = Field(0, description="Total successful queries")
+    failed_queries: int = Field(0, description="Total failed queries")
+    timeout_queries: int = Field(0, description="Total queries that encountered timeout")
+    avg_query_latency_ms: float | None = Field(
+        None, description="Average execution duration in milliseconds for successful queries"
+    )
+
+
 class HealthResponse(BaseModel):
-    status: str = "healthy"
+    status: Literal["healthy", "unhealthy", "degraded"] = Field(
+        "healthy", description="Overall system health status"
+    )
+    liveness: Literal["ok", "down"] = Field(
+        "ok", description="Process liveness check"
+    )
+    readiness: Literal["ready", "not_ready"] = Field(
+        "ready", description="Database readiness check"
+    )
+    database: DatabaseHealthMetrics = Field(
+        default_factory=lambda: DatabaseHealthMetrics(status="connected"),
+        description="FalkorDB database health telemetry",
+    )
+    query_metrics: QueryMetrics = Field(
+        default_factory=QueryMetrics, description="Aggregated query telemetry"
+    )
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
+        description="ISO 8601 timestamp of the health check",
+    )
 
 
 from vulnify.parsers.registry import (

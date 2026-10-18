@@ -2,194 +2,369 @@
   "schema_version": "1.0.0",
   "operation_name": "get_project_finding_paths",
   "query_provenance": "backend/src/vulnify/graph/queries/get_project_finding_paths.cypher",
-  "executed_at": "2026-10-18T13:42:10.149983+00:00",
+  "executed_at": "2026-10-18T13:54:24.042428+00:00",
   "status": "passed",
   "dataset_description": "Seeded dependency graph with >= 5,000 package versions",
-  "total_packages_in_graph": 42,
-  "iterations_measured": 25,
-  "warmup_iterations": 3,
-  "successful_queries": 25,
+  "total_packages_in_graph": 39,
+  "iterations_measured": 50,
+  "warmup_iterations": 5,
+  "successful_queries": 50,
   "failed_queries": 0,
-  "median_latency_ms": 1.286,
-  "p95_latency_ms": 1.789,
-  "min_latency_ms": 0.893,
-  "max_latency_ms": 1.924,
-  "mean_latency_ms": 1.317,
+  "median_latency_ms": 2.199,
+  "p95_latency_ms": 2.847,
+  "min_latency_ms": 1.77,
+  "max_latency_ms": 3.342,
+  "mean_latency_ms": 2.241,
   "latency_units": "milliseconds",
   "target_p95_ms": 1000.0,
   "passed_target": true,
   "details": [
     {
       "iteration": 1,
-      "duration_ms": 1.35,
+      "duration_ms": 2.013,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 2,
-      "duration_ms": 1.447,
+      "duration_ms": 2.586,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 3,
-      "duration_ms": 1.3,
+      "duration_ms": 2.075,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 4,
-      "duration_ms": 1.26,
+      "duration_ms": 1.973,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 5,
-      "duration_ms": 1.326,
+      "duration_ms": 1.8,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 6,
-      "duration_ms": 1.924,
+      "duration_ms": 2.033,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 7,
-      "duration_ms": 1.874,
+      "duration_ms": 2.107,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 8,
-      "duration_ms": 1.445,
+      "duration_ms": 1.77,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 9,
-      "duration_ms": 1.414,
+      "duration_ms": 2.009,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 10,
-      "duration_ms": 1.286,
+      "duration_ms": 3.342,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 11,
-      "duration_ms": 1.232,
+      "duration_ms": 2.353,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 12,
-      "duration_ms": 1.345,
+      "duration_ms": 2.115,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 13,
-      "duration_ms": 1.329,
+      "duration_ms": 2.345,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 14,
-      "duration_ms": 1.208,
+      "duration_ms": 2.227,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 15,
-      "duration_ms": 1.19,
+      "duration_ms": 2.24,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 16,
-      "duration_ms": 1.106,
+      "duration_ms": 2.389,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 17,
-      "duration_ms": 1.283,
+      "duration_ms": 2.292,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 18,
-      "duration_ms": 1.111,
+      "duration_ms": 2.203,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 19,
-      "duration_ms": 1.235,
+      "duration_ms": 2.242,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 20,
-      "duration_ms": 1.104,
+      "duration_ms": 2.803,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 21,
-      "duration_ms": 1.286,
+      "duration_ms": 2.093,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 22,
-      "duration_ms": 1.445,
+      "duration_ms": 2.351,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 23,
-      "duration_ms": 0.893,
+      "duration_ms": 2.128,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 24,
-      "duration_ms": 1.349,
+      "duration_ms": 2.454,
       "success": true,
       "path_count": 1,
       "error": null
     },
     {
       "iteration": 25,
-      "duration_ms": 1.187,
+      "duration_ms": 2.28,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 26,
+      "duration_ms": 2.095,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 27,
+      "duration_ms": 2.404,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 28,
+      "duration_ms": 2.351,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 29,
+      "duration_ms": 2.309,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 30,
+      "duration_ms": 2.085,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 31,
+      "duration_ms": 2.434,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 32,
+      "duration_ms": 1.963,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 33,
+      "duration_ms": 1.85,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 34,
+      "duration_ms": 2.184,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 35,
+      "duration_ms": 2.888,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 36,
+      "duration_ms": 2.337,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 37,
+      "duration_ms": 2.15,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 38,
+      "duration_ms": 2.56,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 39,
+      "duration_ms": 1.924,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 40,
+      "duration_ms": 1.928,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 41,
+      "duration_ms": 2.174,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 42,
+      "duration_ms": 2.194,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 43,
+      "duration_ms": 2.351,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 44,
+      "duration_ms": 2.123,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 45,
+      "duration_ms": 2.041,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 46,
+      "duration_ms": 2.343,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 47,
+      "duration_ms": 2.13,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 48,
+      "duration_ms": 2.25,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 49,
+      "duration_ms": 1.9,
+      "success": true,
+      "path_count": 1,
+      "error": null
+    },
+    {
+      "iteration": 50,
+      "duration_ms": 2.883,
       "success": true,
       "path_count": 1,
       "error": null

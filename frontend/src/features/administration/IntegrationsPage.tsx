@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
+  AlertCircle,
   CheckCircle2,
   RefreshCw,
   ShieldCheck,
@@ -12,8 +13,31 @@ interface IntegrationStatus {
   category: string
   endpoint: string
   status: 'operational' | 'degraded' | 'configured'
-  latencyMs?: number
+  latencyMs?: number | null
   details: Record<string, string>
+}
+
+interface HealthApiResponse {
+  status: string
+  liveness: string
+  readiness: string
+  database: {
+    status: string
+    latency_ms: number | null
+    uptime_seconds: number | null
+    used_memory_human: string | null
+    connected_clients: number | null
+    server_version: string | null
+    graph_name: string | null
+    error: string | null
+  }
+  query_metrics?: {
+    total_queries: number
+    successful_queries: number
+    failed_queries: number
+    avg_query_latency_ms: number | null
+  }
+  timestamp: string
 }
 
 export function IntegrationsPage() {
@@ -22,20 +46,67 @@ export function IntegrationsPage() {
   const [lastChecked, setLastChecked] = useState<string>(
     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
   )
+  const [healthData, setHealthData] = useState<HealthApiResponse | null>(null)
+
+  const fetchHealth = async () => {
+    setIsChecking(true)
+    try {
+      const res = await fetch('/api/health')
+      const data = (await res.json()) as HealthApiResponse
+      setHealthData(data)
+      setLastChecked(
+        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      )
+    } catch {
+      // Offline fallback
+      setHealthData(null)
+    } finally {
+      setIsChecking(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchHealth()
+  }, [])
+
+  const dbIsConnected = healthData?.database?.status === 'connected'
+  const falkorDbLatency = healthData?.database?.latency_ms ?? null
+
+  const formatUptime = (seconds?: number | null) => {
+    if (!seconds && seconds !== 0) return 'Unavailable'
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    return `${h}h ${m}m`
+  }
+
+  const falkorDetails: Record<string, string> = {
+    Protocol: 'RESP3 Graph Command Protocol',
+    'Graph Engine': healthData?.database?.server_version
+      ? `FalkorDB (Redis ${healthData.database.server_version})`
+      : 'FalkorDB v4.x',
+    'Target Graph': healthData?.database?.graph_name ?? 'vulnify',
+    'Server Memory': healthData?.database?.used_memory_human ?? 'Unavailable',
+    'Server Uptime': formatUptime(healthData?.database?.uptime_seconds),
+    'Active Clients': healthData?.database?.connected_clients !== undefined && healthData.database.connected_clients !== null
+      ? String(healthData.database.connected_clients)
+      : 'Unavailable',
+    'Queries Monitored': healthData?.query_metrics
+      ? `${healthData.query_metrics.total_queries} (${healthData.query_metrics.successful_queries} ok, ${healthData.query_metrics.failed_queries} fail)`
+      : 'Telemetry active',
+  }
+
+  if (!dbIsConnected && healthData?.database?.error) {
+    falkorDetails['Health Error'] = healthData.database.error
+  }
 
   const integrations: IntegrationStatus[] = [
     {
       name: 'FalkorDB Graph Engine',
       category: 'Graph Database',
       endpoint: 'redis://localhost:6379',
-      status: 'operational',
-      latencyMs: 3.4,
-      details: {
-        Protocol: 'RESP3 Graph Command Protocol',
-        'Storage Key': 'vulnify_{project_id}',
-        Indexes: 'PackageVersion(name, version), Advisory(id), Service(name)',
-        'Query Bound': 'Depth bounded (*0..6)',
-      },
+      status: dbIsConnected ? 'operational' : healthData ? 'degraded' : 'operational',
+      latencyMs: falkorDbLatency,
+      details: falkorDetails,
     },
     {
       name: 'OSV Upstream Advisory API',
@@ -65,20 +136,7 @@ export function IntegrationsPage() {
   ]
 
   const handleRefresh = async () => {
-    setIsChecking(true)
-    try {
-      // Query backend health endpoint
-      const res = await fetch('/api/health')
-      if (res.ok) {
-        setLastChecked(
-          new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        )
-      }
-    } catch {
-      // Ignore network errors in local dev
-    } finally {
-      setIsChecking(false)
-    }
+    await fetchHealth()
   }
 
   return (
@@ -139,8 +197,18 @@ export function IntegrationsPage() {
                   <h3 className="text-sm font-bold text-white">{item.name}</h3>
                 </div>
 
-                <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300">
-                  <CheckCircle2 className="h-3 w-3" />
+                <span className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                  item.status === 'operational'
+                    ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                    : item.status === 'configured'
+                    ? 'bg-sky-500/15 border border-sky-500/30 text-sky-300'
+                    : 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                }`}>
+                  {item.status === 'degraded' ? (
+                    <AlertCircle className="h-3 w-3" />
+                  ) : (
+                    <CheckCircle2 className="h-3 w-3" />
+                  )}
                   {item.status.toUpperCase()}
                 </span>
               </div>
@@ -149,12 +217,16 @@ export function IntegrationsPage() {
                 {item.endpoint}
               </div>
 
-              {item.latencyMs && (
+              {item.latencyMs !== undefined && item.latencyMs !== null ? (
                 <div className="text-[11px] text-slate-400">
                   Response Latency:{' '}
                   <span className="font-bold text-emerald-400">{item.latencyMs}ms</span>
                 </div>
-              )}
+              ) : item.status === 'degraded' ? (
+                <div className="text-[11px] text-rose-400">
+                  Response Latency: <span className="font-bold">Unavailable</span>
+                </div>
+              ) : null}
 
               <div className="pt-3 border-t border-slate-800/80 space-y-2 text-xs">
                 {Object.entries(item.details).map(([k, v]) => (

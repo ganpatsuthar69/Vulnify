@@ -141,9 +141,11 @@ describe('App Layout and Shell Accessibility (US-902)', () => {
   it('scans IntegrationsPage without violations', async () => {
     const { container } = render(
       <AuthProvider>
-        <main>
-          <IntegrationsPage />
-        </main>
+        <ProjectProvider>
+          <main>
+            <IntegrationsPage />
+          </main>
+        </ProjectProvider>
       </AuthProvider>
     )
     await assertNoA11yViolations(container)

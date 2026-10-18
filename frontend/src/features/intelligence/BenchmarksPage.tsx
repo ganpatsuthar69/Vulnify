@@ -22,6 +22,9 @@ import {
   fetchHistoricalBenchmarkRuns,
   fetchLatestBenchmarkRun,
   fetchBenchmarkRunByFilename,
+  fetchGraphPathBenchmark,
+  triggerGraphPathBenchmark,
+  type GraphPathBenchmarkResult,
   getCategoryDisplayName,
   getSystemDisplayName,
   triggerBenchmarkRun,
@@ -36,18 +39,24 @@ export function BenchmarksPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL')
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null)
   const [runningBenchmark, setRunningBenchmark] = useState<boolean>(false)
+  const [graphPathResult, setGraphPathResult] = useState<GraphPathBenchmarkResult | null>(null)
+  const [runningGraphPath, setRunningGraphPath] = useState<boolean>(false)
 
   // 1. Initial Load of Latest Run & History List
   const loadInitialData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [latest, history] = await Promise.all([
+      const [latest, history, gpRes] = await Promise.all([
         fetchLatestBenchmarkRun(),
         fetchHistoricalBenchmarkRuns().catch(() => []),
+        fetchGraphPathBenchmark().catch(() => null),
       ])
       setRunResult(latest)
       setHistoricalRuns(history)
+      if (gpRes) {
+        setGraphPathResult(gpRes)
+      }
       setSelectedFilename('latest')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load benchmark results.')
@@ -56,6 +65,18 @@ export function BenchmarksPage() {
       setLoading(false)
     }
   }, [])
+
+  const handleTriggerGraphPath = async () => {
+    setRunningGraphPath(true)
+    try {
+      const res = await triggerGraphPathBenchmark(30, 5)
+      setGraphPathResult(res)
+    } catch {
+      // Handled gracefully in UI
+    } finally {
+      setRunningGraphPath(false)
+    }
+  }
 
   useEffect(() => {
     loadInitialData()
@@ -182,6 +203,105 @@ export function BenchmarksPage() {
             )}
           </button>
         </div>
+      </div>
+
+      {/* Graph-Path Query Latency Benchmark Panel (US-903) */}
+      <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-5 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400">
+              <Layers className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-white">Graph-Path Query Benchmark</h2>
+                <span className="rounded-full bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[9px] font-bold text-indigo-300">
+                  US-903
+                </span>
+                {graphPathResult && (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                      graphPathResult.target_p95_status === 'PASS'
+                        ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                        : 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                    }`}
+                  >
+                    {graphPathResult.target_p95_status}: P95 &lt; 1.0s TARGET
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Evaluates production Cypher path traversal (<code className="text-slate-300 font-mono">[:DEPENDS_ON*1..6]-&gt;[:HAS_VULNERABILITY]</code>) against &ge;5,000 package versions in FalkorDB.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleTriggerGraphPath}
+            disabled={runningGraphPath}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition disabled:opacity-50"
+          >
+            {runningGraphPath ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                <span>Benchmarking DB...</span>
+              </>
+            ) : (
+              <>
+                <Play className="h-3.5 w-3.5 fill-current" />
+                <span>Run Path Benchmark</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {graphPathResult ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="rounded-lg bg-[#0b121a] border border-slate-800/80 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">P95 Latency</div>
+              <div className="text-lg font-mono font-bold text-emerald-400 mt-1">
+                {typeof graphPathResult.p95_latency_ms === 'number'
+                  ? `${graphPathResult.p95_latency_ms.toFixed(2)} ms`
+                  : 'N/A'}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">Target: &lt; 1,000.0 ms</div>
+            </div>
+
+            <div className="rounded-lg bg-[#0b121a] border border-slate-800/80 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Median Latency</div>
+              <div className="text-lg font-mono font-bold text-sky-400 mt-1">
+                {typeof graphPathResult.median_latency_ms === 'number'
+                  ? `${graphPathResult.median_latency_ms.toFixed(2)} ms`
+                  : 'N/A'}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">50th percentile sample</div>
+            </div>
+
+            <div className="rounded-lg bg-[#0b121a] border border-slate-800/80 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Package Versions</div>
+              <div className="text-lg font-mono font-bold text-white mt-1">
+                {typeof graphPathResult.package_versions_in_graph === 'number'
+                  ? graphPathResult.package_versions_in_graph.toLocaleString()
+                  : '0'}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">&ge; 5,000 nodes tested</div>
+            </div>
+
+            <div className="rounded-lg bg-[#0b121a] border border-slate-800/80 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Sample Count</div>
+              <div className="text-lg font-mono font-bold text-slate-300 mt-1">
+                {graphPathResult.sample_count ?? 0} runs
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">+{graphPathResult.warmup_iterations ?? 0} warmup excluded</div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg bg-[#0b121a] border border-slate-800/80 p-4 text-xs text-slate-400 flex items-center justify-between">
+            <span>No graph-path benchmark executed yet. Click &quot;Run Path Benchmark&quot; or execute CLI harness.</span>
+            <span className="font-mono text-[11px] text-slate-500">python -m vulnify.benchmarks.graph_path_benchmark</span>
+          </div>
+        )}
       </div>
 
       {/* Loading State */}

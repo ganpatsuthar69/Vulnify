@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     FALKORDB_PORT: int = 6379
     FALKORDB_PASSWORD: str | None = None
     FALKORDB_GRAPH: str = "vulnify"
+    FALKORDB_CONNECT_TIMEOUT_SECONDS: float = 3.0
+    FALKORDB_QUERY_TIMEOUT_MS: int = 5000
 
     # Security & Session Configuration
     SESSION_SECRET: str
