@@ -2054,6 +2054,106 @@ Lists all GitHub issues created for findings in the specified project.
 
 ---
 
+### 28b. `GET /api/admin/github-config` (US-506)
+
+Retrieves current non-sensitive GitHub integration target configuration (admin only). The personal access token is never displayed or returned.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/admin/github-config` (optional query: `?project_id={project_id}`)
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### Responses
+- **`200 OK`**:
+  ```json
+  {
+    "configured": true,
+    "owner": "vulnify",
+    "repo": "demo-workspace",
+    "target_repo": "vulnify/demo-workspace",
+    "has_token": true,
+    "api_base_url": "https://api.github.com",
+    "validation_status": "valid",
+    "validation_message": "Successfully connected to repository 'vulnify/demo-workspace'. Token has permissions to create remediation issues.",
+    "last_validated_at": 1729173000,
+    "updated_at": 1729173000,
+    "updated_by": "admin@vulnify.local",
+    "project_id": null
+  }
+  ```
+- **`401 Unauthorized`**: Authentication required.
+- **`403 Forbidden`**: Administrator access required.
+
+---
+
+### 28c. `POST /api/admin/github-config` (US-506)
+
+Sets or updates the target repository and credentials (admin only). When `validate_before_save` is `true`, validates repository access against GitHub permissions before saving. Encrypts tokens with AES-256-GCM at rest.
+
+#### Request
+- **Method**: `POST`
+- **Path**: `/api/admin/github-config`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-Requested-With: vulnify`
+- **Body**:
+  ```json
+  {
+    "owner": "team-sec",
+    "repo": "remediation-workspace",
+    "token": "ghp_optional_new_token_to_rotate",
+    "validate_before_save": true
+  }
+  ```
+
+#### Responses
+- **`200 OK`**: Returns updated `GitHubConfigResponse` (token omitted).
+- **`400 Bad Request`**: Repository validation failed or invalid owner/repo format.
+- **`401 Unauthorized`**: Authentication required.
+- **`403 Forbidden`**: Administrator access required.
+
+---
+
+### 28d. `POST /api/admin/github-config/validate` (US-506)
+
+Validates target repository existence and token access permissions against GitHub REST API (`GET /repos/{owner}/{repo}`) without mutating stored configuration.
+
+#### Request
+- **Method**: `POST`
+- **Path**: `/api/admin/github-config/validate`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-Requested-With: vulnify`
+- **Body**:
+  ```json
+  {
+    "owner": "team-sec",
+    "repo": "remediation-workspace",
+    "token": "ghp_test_token"
+  }
+  ```
+
+#### Responses
+- **`200 OK`**:
+  ```json
+  {
+    "valid": true,
+    "status": "valid",
+    "message": "Successfully connected to repository 'team-sec/remediation-workspace'. Token has permissions to create remediation issues.",
+    "owner": "team-sec",
+    "repo": "remediation-workspace",
+    "target_repo": "team-sec/remediation-workspace",
+    "has_issues_enabled": true,
+    "has_write_access": true,
+    "checked_at": 1729173000
+  }
+  ```
+- **`401 Unauthorized`**: Authentication required.
+- **`403 Forbidden`**: Administrator access required.
+
+---
+
 ### 29. Decision Management & Change Detection Endpoints (US-401 / US-402)
 
 #### 29a. `POST /api/projects/{project_id}/findings/{finding_id}/decision`
