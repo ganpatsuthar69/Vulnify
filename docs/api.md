@@ -1158,6 +1158,7 @@ Retrieves server-paginated, project-scoped confirmed vulnerability findings grou
 - **`service_id`** (string, optional): Filter by associated service identifier.
 - **`status`** (string, optional): Filter by triage status (`open`, `under_investigation`, `affected`, `not_affected`, `fixed`). Case-insensitive. Default un-triaged status is `open`.
 - **`search`** (string, optional): Case-insensitive text search matching either advisory ID (e.g. `GHSA-29mw-wpgm-hmr9`) or package name (e.g. `lodash`).
+- **`sort_by`** (string, optional): Order by `'priority'` for deterministic ranking according to `docs/scoring.md` tie-breakers, or omit for default stable alphanumeric order.
 
 #### Semantics & Distinctions
 - **Project Scoping**: Only findings associated with services and package versions belonging to the specified project are returned.
@@ -1167,7 +1168,7 @@ Retrieves server-paginated, project-scoped confirmed vulnerability findings grou
   - `path_found`: A verified dependency path was found in the graph.
   - `no_path_found`: No dependency path was found from the service to the affected package version. (Does not guarantee safety).
   - `unavailable`: Topology data or dependency analysis was unavailable for the target.
-- **Priority**: Vulnify priority band. Unranked findings explicitly return `unknown` rather than fabricating zero risk or exploiting scores.
+- **Priority & Reasons (US-301)**: Deterministic priority band (`Highest`, `High`, `Medium`, `Low`, `unknown`) computed by the backend scoring engine according to `docs/scoring.md`. Each finding includes human-readable `priority_reasons` and `scoring_version` (`v1.0.0`). Missing signals explicitly show as `unknown`, never zero risk.
 
 #### Responses
 - **`200 OK`**: Paginated finding results.
@@ -1187,7 +1188,13 @@ Retrieves server-paginated, project-scoped confirmed vulnerability findings grou
           "ecosystem": "npm",
           "package_version": "4.17.20",
           "package_version_id": "npm:lodash@4.17.20",
-          "priority": "unknown",
+          "priority": "High",
+          "priority_reasons": [
+            "Advisory severity is High",
+            "Transitive dependency reachable from service (path depth: 2 hops)",
+            "Actionable remediation target available (fixed in >= 4.17.21)"
+          ],
+          "scoring_version": "v1.0.0",
           "status": "open",
           "path_depth": 2,
           "path_status": "path_found",
@@ -1284,7 +1291,13 @@ Advisory text (`advisory_details`, `advisory_summary`) is untrusted input from e
       "ecosystem": "npm",
       "package_version": "4.17.20",
       "package_version_id": "npm:lodash@4.17.20",
-      "priority": "unknown",
+      "priority": "High",
+      "priority_reasons": [
+        "Advisory severity is High",
+        "Transitive dependency reachable from service (path depth: 2 hops)",
+        "Actionable remediation target available (fixed in >= 4.17.21)"
+      ],
+      "scoring_version": "v1.0.0",
       "status": "open",
       "path_depth": 2,
       "path_status": "path_found",
@@ -1431,6 +1444,204 @@ Retrieves bounded, deterministic shortest dependency paths from the root service
 - **`404 Not Found`**: Project or finding not found (`PROJECT_NOT_FOUND` or `Finding '...' not found in project '...'`).
 - **`422 Unprocessable Entity`**: Invalid depth or limit query parameter.
 - **`500 Internal Server Error`**: Database query failure (`INTERNAL_SERVER_ERROR`).
+
+---
+
+### 19. `GET /api/projects/{project_id}/data-quality` (US-207)
+
+Evaluates project-wide and finding-level data quality warnings, highlighting incomplete analysis scope and enforcing the honesty constraint that absence of evidence does not guarantee safety.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/data-quality`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### URL Parameters
+- **`project_id`** (string, required): Associated project identifier.
+
+#### Warning Categories & Semantics
+1. **`missing_topology`**: Triggers when services exist in the project without recorded inter-service call relationships (`CALLS`). Alerts the user that dependency traversals reflect only internal service dependency graphs and cannot verify architectural reachability from external ingress or across microservices.
+2. **`stale_advisory_data`**: Triggers when vulnerability advisories were retrieved more than 7 days ago (604,800 seconds) according to the project's freshness policy, or when retrieval timestamps are missing (`UNKNOWN_ADVISORY_FRESHNESS`).
+3. **`partial_import`**: Triggers when recent IngestionJobs terminated with `partial` or `failed` status, or contain skipped/failed package entries.
+4. **`no_path`**: Emitted on individual findings or path queries when no architectural dependency path exists within the bounded search depth. Explicitly emphasizes that absence of a path does not guarantee safety or immunity.
+
+#### Responses
+- **`200 OK`**: Data quality evaluation results.
+  - **Body**:
+    ```json
+    {
+      "project_id": "893c5240-a19e-4c55-b8ea-a3d538eec612",
+      "has_warnings": true,
+      "warning_count": 2,
+      "warnings": [
+        {
+          "code": "MISSING_TOPOLOGY",
+          "category": "missing_topology",
+          "severity": "warning",
+          "title": "Missing Service Topology",
+          "message": "Service-to-service call topology has not been imported. Dependency paths reflect internal service dependencies only and cannot verify architectural exposure from external ingress or across services.",
+          "resource_id": null,
+          "details": {
+            "service_count": 3,
+            "call_edge_count": 0
+          }
+        },
+        {
+          "code": "STALE_ADVISORY_DATA",
+          "category": "stale_advisory_data",
+          "severity": "warning",
+          "title": "Stale Advisory Data",
+          "message": "Advisory data for this project was last refreshed 12 days ago, exceeding the 7-day freshness policy threshold. Newly published vulnerabilities or patched versions may not be reflected.",
+          "resource_id": null,
+          "details": {
+            "threshold_days": 7,
+            "last_retrieved_at": 1728134400,
+            "age_days": 12
+          }
+        }
+      ],
+      "evaluated_at": 1729172000
+    }
+    ```
+- **`401 Unauthorized`**: Authentication required (`AUTHENTICATION_REQUIRED`).
+- **`404 Not Found`**: Project not found (`NOT_FOUND`).
+- **`500 Internal Server Error`**: Database query failure (`INTERNAL_SERVER_ERROR`).
+
+---
+
+### 20. `GET /api/projects/{project_id}/findings/{finding_id}/upgrade-candidates` (US-401)
+
+Retrieves suggested upgrade targets and compatibility caveats for an individual confirmed finding, derived strictly from advisory fixed versions and server-evaluated SemVer differentials.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/findings/{finding_id}/upgrade-candidates`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### URL Parameters
+- **`project_id`** (string, required): Associated project identifier.
+- **`finding_id`** (string, required): Deterministic finding ID or advisory ID.
+
+#### Core Rules & Acceptance Criteria
+1. **Advisory Fixed Version Provenance (AC-1)**: Upgrade candidate versions come strictly from the advisory's verified fixed versions stored in FalkorDB.
+2. **Classification & Labelling (AC-1)**: Each candidate is labelled `recommended`, `major version`, or `patch only`. Exactly one lowest-risk target is marked as `is_recommended: true`.
+3. **Compatibility Caveats & Honesty (AC-2)**: Shows contextual caveats (breaking change risk, transitive parent package notes, manifest range checks). Vulnify **never claims an upgrade is safe to ship** without project-level testing.
+4. **Honest 'No Fix Available' State (AC-3)**: If no fixed version exists in the advisory, `has_fix` is `false`, `candidates` is empty, and an explicit `no_fix_message` and defensive `remediation_guidance` are returned.
+
+#### Responses
+- **`200 OK`**: Evaluated upgrade candidates.
+  - **Body**:
+    ```json
+    {
+      "project_id": "893c5240-a19e-4c55-b8ea-a3d538eec612",
+      "finding_id": "find-a1b2c3d4e5f67890",
+      "advisory_id": "GHSA-29mw-wpgm-hmr9",
+      "package_name": "lodash",
+      "current_version": "4.17.20",
+      "ecosystem": "npm",
+      "service_id": "893c5240-a19e-4c55-b8ea-a3d538eec612:payment-api",
+      "service_name": "payment-api",
+      "path_depth": 2,
+      "is_transitive": true,
+      "has_fix": true,
+      "candidates": [
+        {
+          "target_version": "4.17.21",
+          "classification": "recommended",
+          "label": "Recommended",
+          "labels": ["recommended", "patch only"],
+          "semver_diff": "patch",
+          "is_recommended": true,
+          "fix_status": "fix_supported",
+          "compatibility_status": "compatible",
+          "breaking_change_risk": "low",
+          "caveats": [
+            "Patch-only upgrade (v4.17.20 -> v4.17.21): Backwards-compatible bug and security fix. Minimal regression risk within the same release series.",
+            "Transitive dependency (depth: 2 hops): Package 'lodash' is brought in by parent dependencies. Direct manifest upgrade may require bumping parent packages or using package manager overrides (e.g. npm 'overrides', yarn 'resolutions', or pip constraints).",
+            "Absence of detected conflicts does not guarantee runtime compatibility or application safety. Vulnify never claims an upgrade is safe to ship without project-level integration and regression testing."
+          ],
+          "evidence_source": "Advisory fixed version declaration"
+        }
+      ],
+      "no_fix_message": null,
+      "remediation_guidance": "Review candidate SemVer diffs, check for breaking API changes, and test before applying. Never deploy upgrades directly to production without running test suites.",
+      "safety_disclaimer": "No upgrade is guaranteed safe to ship. Upstream fixed versions indicate that the security advisory reports the vulnerability as resolved in that release. Upgrades may introduce regressions, breaking changes, or undeclared side effects. Always run test suites and security validation before deploying to production.",
+      "evaluated_at": 1729172000
+    }
+    ```
+- **`401 Unauthorized`**: Authentication required (`AUTHENTICATION_REQUIRED`).
+- **`404 Not Found`**: Project or finding not found (`NOT_FOUND`).
+- **`500 Internal Server Error`**: Database query failure (`INTERNAL_SERVER_ERROR`).
+
+---
+
+### 21. `GET /api/projects/{project_id}/upgrade-candidates` (US-401 / US-501)
+
+Retrieves project-wide upgrade candidate evaluations for all confirmed findings, providing aggregated remediation metrics and per-finding upgrade recommendations.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/upgrade-candidates`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### Responses
+- **`200 OK`**: Project-wide upgrade candidate evaluations.
+  - **Body**:
+    ```json
+    {
+      "project_id": "893c5240-a19e-4c55-b8ea-a3d538eec612",
+      "total_findings": 15,
+      "findings_with_fix": 12,
+      "findings_without_fix": 3,
+      "items": [
+        {
+          "project_id": "893c5240-a19e-4c55-b8ea-a3d538eec612",
+          "finding_id": "find-a1b2c3d4e5f67890",
+          "advisory_id": "GHSA-29mw-wpgm-hmr9",
+          "package_name": "lodash",
+          "current_version": "4.17.20",
+          "ecosystem": "npm",
+          "service_id": "893c5240-a19e-4c55-b8ea-a3d538eec612:payment-api",
+          "service_name": "payment-api",
+          "path_depth": 2,
+          "is_transitive": true,
+          "has_fix": true,
+          "candidates": [
+            {
+              "target_version": "4.17.21",
+              "classification": "recommended",
+              "label": "Recommended",
+              "labels": ["recommended", "patch only"],
+              "semver_diff": "patch",
+              "is_recommended": true,
+              "fix_status": "fix_supported",
+              "compatibility_status": "compatible",
+              "breaking_change_risk": "low",
+              "caveats": [
+                "Patch-only upgrade (v4.17.20 -> v4.17.21): Backwards-compatible bug and security fix. Minimal regression risk within the same release series.",
+                "Transitive dependency (depth: 2 hops): Package 'lodash' is brought in by parent dependencies. Direct manifest upgrade may require bumping parent packages or using package manager overrides.",
+                "Absence of detected conflicts does not guarantee runtime compatibility or application safety. Vulnify never claims an upgrade is safe to ship without project-level integration and regression testing."
+              ],
+              "evidence_source": "Advisory fixed version declaration"
+            }
+          ],
+          "no_fix_message": null,
+          "remediation_guidance": "Review candidate SemVer diffs, check for breaking API changes, and test before applying.",
+          "safety_disclaimer": "No upgrade is guaranteed safe to ship. Upstream fixed versions indicate that the security advisory reports the vulnerability as resolved in that release. Upgrades may introduce regressions, breaking changes, or undeclared side effects. Always run test suites and security validation before deploying to production.",
+          "evaluated_at": 1729172000
+        }
+      ],
+      "safety_disclaimer": "No upgrade is guaranteed safe to ship. Upstream fixed versions indicate that the security advisory reports the vulnerability as resolved in that release. Upgrades may introduce regressions, breaking changes, or undeclared side effects. Always run test suites and security validation before deploying to production.",
+      "evaluated_at": 1729172000
+    }
+    ```
+- **`401 Unauthorized`**: Authentication required (`AUTHENTICATION_REQUIRED`).
+- **`404 Not Found`**: Project not found (`NOT_FOUND`).
+- **`500 Internal Server Error`**: Database query failure (`INTERNAL_SERVER_ERROR`).
+
 
 
 

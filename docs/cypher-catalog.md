@@ -148,7 +148,76 @@ RETURN s.id AS service_id,
        r.fixed_version AS fixed_version,
        coalesce(r.priority, v.priority, 'unknown') AS priority,
        coalesce(r.triage_status, 'open') AS status,
-       path_depth
+       path_depth,
+       v.fixed_versions AS advisory_fixed_versions
 ORDER BY v.id ASC
 LIMIT 1
 ```
+
+---
+
+## 8. `check_project_topology.cypher` (US-207)
+
+**Purpose**: Verifies whether services in the project have inter-service communication edges (`CALLS`) or whether service topology is absent.  
+**Parameters**: `$project_id` (string)  
+**Safety & Bounds**: Scoped directly to project services via `HAS_SERVICE` edge.
+
+```cypher
+// name: check_project_topology
+// what it proves: checks service count and inter-service call edges in project
+// parameters: $project_id
+MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(s1:Service)
+OPTIONAL MATCH (s1)-[r:CALLS]->(s2:Service)
+RETURN count(DISTINCT s1) AS service_count, count(r) AS call_edge_count
+```
+
+---
+
+## 9. `check_project_advisories_freshness.cypher` (US-207)
+
+**Purpose**: Inspects timestamps on vulnerability nodes reachable by project packages to verify compliance with the 7-day advisory freshness policy.  
+**Parameters**: `$project_id` (string)  
+**Safety & Bounds**: Traversal is strictly depth-bounded (`*1..15`).
+
+```cypher
+// name: check_project_advisories_freshness
+// what it proves: evaluates advisory timestamps against the 7-day freshness policy
+// parameters: $project_id
+MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(:Service)-[:DEPENDS_ON*1..15]->(pv:PackageVersion)-[:HAS_ADVISORY]->(v:Vulnerability)
+RETURN
+  count(DISTINCT v) AS total_advisories,
+  min(v.retrieved_at) AS oldest_retrieved_at,
+  max(v.retrieved_at) AS newest_retrieved_at,
+  count(CASE WHEN v.retrieved_at IS NULL OR v.retrieved_at = 0 THEN 1 END) AS missing_timestamp_count
+```
+
+---
+
+## 10. `upsert_affects_relationship.cypher` (US-301)
+
+**Purpose**: Idempotently establishes or refreshes an `AFFECTS` edge between a `Vulnerability` node and a `PackageVersion` node, persisting version-matching provenance, priority band, and `scoring_version`.  
+**Parameters**: `$matches` (list of parameter objects)  
+
+```cypher
+// name: upsert_affects_relationship
+// what it proves: idempotently records or updates an AFFECTS relationship with evaluation metadata
+// parameters: $matches
+UNWIND $matches AS m
+MATCH (v:Vulnerability {id: m.advisory_id})
+MATCH (pv:PackageVersion {id: m.package_version_id})
+MERGE (v)-[r:AFFECTS]->(pv)
+SET r.status = m.status,
+    r.reason = m.reason,
+    r.reason_code = m.reason_code,
+    r.matched_range = m.matched_range,
+    r.fixed_version = m.fixed_version,
+    r.comparator = m.comparator,
+    r.evaluated_at = m.evaluated_at,
+    r.fingerprint = m.fingerprint,
+    r.priority = m.priority,
+    r.scoring_version = m.scoring_version,
+    r.origin = 'version_match'
+RETURN count(r) AS count
+```
+
+

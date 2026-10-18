@@ -1,7 +1,7 @@
 """Pydantic v2 data models for Vulnify user management, authentication, and health."""
 
 import re
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
@@ -323,6 +323,8 @@ class FindingItemResponse(BaseModel):
     package_version: str = Field(..., description="Installed/matched package version")
     package_version_id: str = Field(..., description="PURL or graph identifier of package version")
     priority: str = Field(default="unknown", description="Vulnify priority band (unknown, Low, Medium, High, Highest)")
+    priority_reasons: list[str] = Field(default_factory=list, description="Transparent, deterministic reasons explaining priority band")
+    scoring_version: str = Field(default="v1.0.0", description="Scoring engine rule version applied")
     status: str = Field(default="open", description="Triage status (open, under_investigation, affected, not_affected, fixed)")
     path_depth: int | None = Field(default=None, description="Shortest dependency path depth from service (1 for direct, >=2 for transitive)")
     path_status: FindingPathStatusLiteral = Field(default="path_found", description="Status of dependency path evidence")
@@ -350,9 +352,41 @@ class FindingSummaryResponse(BaseModel):
     findings_needing_decision: int = Field(..., ge=0, description="Findings requiring a triage decision")
 
 
+# =====================================================================
+# US-207: Honest Empty and Warning States Schemas
+# =====================================================================
+
+DataQualityCategoryLiteral = Literal[
+    "no_path",
+    "missing_topology",
+    "stale_advisory_data",
+    "partial_import",
+]
+DataQualitySeverityLiteral = Literal["warning", "info", "error"]
+
+
+class DataQualityWarning(BaseModel):
+    code: str = Field(..., description="Machine-readable warning code (e.g. MISSING_TOPOLOGY, STALE_ADVISORY_DATA, UNKNOWN_ADVISORY_FRESHNESS, PARTIAL_IMPORT_DETECTED, NO_PATH_DISCLAIMER)")
+    category: DataQualityCategoryLiteral = Field(..., description="Warning category")
+    severity: DataQualitySeverityLiteral = Field(default="warning", description="Severity classification")
+    title: str = Field(..., description="Short, human-readable warning summary")
+    message: str = Field(..., description="Actionable explanation emphasizing data bounds and safety implications")
+    resource_id: str | None = Field(default=None, description="Associated resource identifier (service, job, or advisory ID)")
+    details: dict[str, Any] = Field(default_factory=dict, description="Structured evaluation details (e.g. age_days, threshold_days, failed_items)")
+
+
+class ProjectDataQualityResponse(BaseModel):
+    project_id: str = Field(..., description="Project workspace identifier")
+    has_warnings: bool = Field(..., description="True if any data quality warnings are present")
+    warning_count: int = Field(..., description="Total count of active data quality warnings")
+    warnings: list[DataQualityWarning] = Field(default_factory=list, description="Active data quality warnings")
+    evaluated_at: int = Field(..., description="Unix timestamp of evaluation")
+
+
 class FindingDetailResponse(FindingItemResponse):
     advisory_details: str = Field(default="", description="Full advisory text and description from OSV")
     aliases: list[str] = Field(default_factory=list, description="Related identifiers such as CVEs or GHSAs")
+    warnings: list[DataQualityWarning] = Field(default_factory=list, description="Contextual data quality warnings for this finding and project")
 
 
 # =====================================================================
@@ -414,6 +448,8 @@ class FindingPathsResponse(BaseModel):
     is_truncated: bool = Field(default=False, description="True if more paths exist beyond limit_applied")
     has_path: bool = Field(..., description="True if at least one dependency path exists")
     evaluated_at: int = Field(..., description="Evaluation timestamp")
+    no_path_message: str | None = Field(default=None, description="Explicit disclaimer explaining search bounds and that absence of path does not guarantee safety")
+    warnings: list[DataQualityWarning] = Field(default_factory=list, description="Contextual data quality warnings")
 
 
 
@@ -481,4 +517,63 @@ class JobRetryResponse(BaseModel):
     message: str = Field(..., description="Confirmation message")
     original_job_id: str = Field(..., description="Identifier of the original job")
     new_job: IngestionJobResponse = Field(..., description="The newly queued retry job record")
+
+
+# =====================================================================
+# US-401 / US-501: Upgrade Candidates Schemas
+# =====================================================================
+
+CandidateClassificationLiteral = Literal["recommended", "major", "patch", "minor", "unknown"]
+CandidateFixStatusLiteral = Literal["fix_supported", "not_fixed", "unknown"]
+CompatibilityStatusLiteral = Literal["compatible", "conflict", "unknown"]
+BreakingChangeRiskLiteral = Literal["high", "low", "unknown"]
+
+
+class UpgradeCandidateItem(BaseModel):
+    target_version: str = Field(..., description="Suggested candidate package version")
+    classification: CandidateClassificationLiteral = Field(..., description="Primary candidate classification ('recommended', 'major', 'patch', 'minor')")
+    label: str = Field(..., description="Human-readable badge label ('Recommended', 'Major version', 'Patch only', 'Minor version')")
+    labels: list[str] = Field(default_factory=list, description="All applicable candidate labels including 'recommended', 'major version', 'patch only'")
+    semver_diff: str = Field(..., description="SemVer delta classification ('major', 'minor', 'patch', 'unknown')")
+    is_recommended: bool = Field(default=False, description="True if this candidate is the primary recommended remediation target")
+    fix_status: CandidateFixStatusLiteral = Field(default="fix_supported", description="Security-fix support evidence state")
+    compatibility_status: CompatibilityStatusLiteral = Field(default="unknown", description="Compatibility evaluation state (compatible, conflict, unknown)")
+    breaking_change_risk: BreakingChangeRiskLiteral = Field(default="unknown", description="Assessed risk of breaking API changes")
+    caveats: list[str] = Field(default_factory=list, description="Contextual compatibility caveats and dependency notes")
+    evidence_source: str = Field(default="Advisory fixed version declaration", description="Origin of candidate remediation recommendation")
+
+
+class UpgradeCandidatesResponse(BaseModel):
+    project_id: str = Field(..., description="Associated project identifier")
+    finding_id: str = Field(..., description="Target finding identifier")
+    advisory_id: str = Field(..., description="Target advisory identifier")
+    package_name: str = Field(..., description="Target package name")
+    current_version: str = Field(..., description="Currently installed / matched package version")
+    ecosystem: str = Field(..., description="Package ecosystem (npm, PyPI, Cargo, Go)")
+    service_id: str = Field(..., description="Associated service identifier")
+    service_name: str = Field(..., description="Associated service name")
+    path_depth: int | None = Field(default=None, description="Shortest dependency path depth from root service")
+    is_transitive: bool = Field(default=False, description="True if dependency is transitive (path depth > 1)")
+    has_fix: bool = Field(..., description="Whether a verified fixed version is available from upstream advisory")
+    candidates: list[UpgradeCandidateItem] = Field(default_factory=list, description="Ranked upgrade candidate targets")
+    no_fix_message: str | None = Field(default=None, description="Explicit disclaimer when no upstream fix exists")
+    remediation_guidance: str | None = Field(default=None, description="Defensive guidance for mitigation and testing")
+    safety_disclaimer: str = Field(
+        default="No upgrade is guaranteed safe to ship. Upstream fixed versions indicate that the security advisory reports the vulnerability as resolved in that release. Upgrades may introduce regressions, breaking changes, or undeclared side effects. Always run test suites and security validation before deploying to production.",
+        description="Mandatory disclaimer: absence of detected conflict does not guarantee runtime safety",
+    )
+    evaluated_at: int = Field(..., description="Unix timestamp of candidate evaluation")
+
+
+class ProjectUpgradeCandidatesResponse(BaseModel):
+    project_id: str = Field(..., description="Project workspace identifier")
+    total_findings: int = Field(..., description="Total confirmed findings evaluated")
+    findings_with_fix: int = Field(..., description="Findings with at least one verified upgrade target")
+    findings_without_fix: int = Field(..., description="Findings with no upstream fix published")
+    items: list[UpgradeCandidatesResponse] = Field(default_factory=list, description="Per-finding upgrade candidate evaluations")
+    safety_disclaimer: str = Field(
+        default="No upgrade is guaranteed safe to ship. Upstream fixed versions indicate that the security advisory reports the vulnerability as resolved in that release. Upgrades may introduce regressions, breaking changes, or undeclared side effects. Always run test suites and security validation before deploying to production.",
+        description="Mandatory disclaimer: absence of detected conflict does not guarantee runtime safety",
+    )
+    evaluated_at: int = Field(..., description="Unix timestamp of project evaluation")
 

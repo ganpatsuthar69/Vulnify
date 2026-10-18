@@ -16,6 +16,8 @@ import { useProjects } from '@/features/projects/ProjectProvider'
 import { getProjectFindingDetail, ProjectApiError } from '@/features/projects/projectApi'
 import type { FindingDetail } from '@/features/projects/types'
 import { DependencyPathVisualizer } from '@/features/graph/DependencyPathVisualizer'
+import { DataQualityBanner } from '@/shared/components/DataQualityBanner'
+import { FindingUpgradeCandidatesSection } from '@/features/remediation/FindingUpgradeCandidatesSection'
 
 export function FindingDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -187,6 +189,9 @@ export function FindingDetailPage() {
             {/* Priority Band */}
             <span className="rounded border border-slate-700 bg-slate-800/80 px-2 py-0.5 text-xs font-medium text-slate-300">
               Priority: <strong className="text-white capitalize">{finding.priority}</strong>
+              {finding.scoring_version && (
+                <span className="ml-1 text-[10px] text-slate-400 font-mono">({finding.scoring_version})</span>
+              )}
             </span>
 
             {/* Triage Status */}
@@ -227,6 +232,11 @@ export function FindingDetailPage() {
         </div>
       </div>
 
+      {/* US-207: Contextual Data Quality & Analysis Limits Banner */}
+      {finding.warnings && finding.warnings.length > 0 && (
+        <DataQualityBanner warnings={finding.warnings} />
+      )}
+
       {/* Advisory Overview Card: AC-1 & AC-2 (Rendered as pure plain-text, no HTML execution) */}
       <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-6 shadow-xl space-y-4">
         <h2 className="text-sm font-bold text-white">Advisory Summary</h2>
@@ -244,6 +254,55 @@ export function FindingDetailPage() {
             <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-4 text-xs text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-80 overflow-y-auto break-words select-text">
               {finding.advisory_details}
             </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* US-301: Priority Band & Decision Reasons Card */}
+      <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-6 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-sm font-bold text-white">Priority Ranking &amp; Evidence (US-301)</h2>
+            <span
+              className={`rounded px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${
+                finding.priority.toLowerCase() === 'highest'
+                  ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+                  : finding.priority.toLowerCase() === 'high'
+                  ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40'
+                  : finding.priority.toLowerCase() === 'medium'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                  : finding.priority.toLowerCase() === 'low'
+                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                  : 'bg-slate-700/40 text-slate-300 border border-slate-600'
+              }`}
+            >
+              {finding.priority} Priority
+            </span>
+          </div>
+          {finding.scoring_version && (
+            <span className="text-[11px] font-mono text-slate-400 bg-slate-800/80 border border-slate-700/60 px-2 py-0.5 rounded self-start sm:self-auto">
+              Policy Version: {finding.scoring_version}
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-300">
+          Priority is deterministically computed from architectural reachability, advisory severity, and remediation signals according to <span className="font-mono text-slate-200">docs/scoring.md</span>. Missing signals are treated as unknown, not zero risk.
+        </p>
+
+        {finding.priority_reasons && finding.priority_reasons.length > 0 ? (
+          <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-4">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+              Decision Reasons:
+            </h3>
+            <ul className="space-y-1.5 text-xs text-slate-200">
+              {finding.priority_reasons.map((reason, idx) => (
+                <li key={idx} className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />
+                  <span>{reason}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
       </div>
@@ -337,7 +396,7 @@ export function FindingDetailPage() {
               <span className="font-mono text-slate-300">
                 {finding.path_depth !== null && finding.path_depth !== undefined
                   ? `${finding.path_depth} hop${finding.path_depth > 1 ? 's' : ''} (${finding.path_depth === 1 ? 'direct dependency' : 'transitive dependency'})`
-                  : 'No confirmed path'}
+                  : 'No confirmed path (safety not guaranteed)'}
               </span>
             </div>
 
@@ -348,6 +407,12 @@ export function FindingDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* US-401: Upgrade Candidates & Remediation Targets */}
+      <FindingUpgradeCandidatesSection
+        projectId={activeProject?.id ?? finding.project_id}
+        findingId={finding.id}
+      />
 
       {/* Dependency Reachability & Interactive Exposure Paths (US-204) */}
       <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-6 shadow-xl space-y-4">

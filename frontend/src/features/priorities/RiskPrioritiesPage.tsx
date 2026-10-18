@@ -3,74 +3,37 @@ import {
   ArrowRight,
   Loader2,
   Info,
+  ShieldAlert,
 } from 'lucide-react'
 import { Link } from 'react-router'
 import { useProjects } from '@/features/projects/ProjectProvider'
-import { getProjectVulnerabilities } from '@/features/projects/projectApi'
-import type { VulnerabilityFinding } from '@/features/projects/types'
-
-interface RankedFinding extends VulnerabilityFinding {
-  priorityBand: 'Highest' | 'High' | 'Medium' | 'Low'
-  reasons: string[]
-}
-
-function computeDeterministicPriority(finding: VulnerabilityFinding): {
-  band: 'Highest' | 'High' | 'Medium' | 'Low'
-  reasons: string[]
-} {
-  const sev = finding.severity.toUpperCase()
-  const hasFixed = Boolean(finding.fixed_version)
-  const isAffected = finding.match_status.toLowerCase() === 'affected'
-  const reasons: string[] = []
-
-  if (sev === 'CRITICAL') {
-    reasons.push('Critical severity advisory')
-  } else if (sev === 'HIGH') {
-    reasons.push('High severity advisory')
-  } else if (['MEDIUM', 'MODERATE'].includes(sev)) {
-    reasons.push('Medium/Moderate severity advisory')
-  } else {
-    reasons.push('Low severity advisory')
-  }
-
-  if (isAffected) {
-    reasons.push('Installed version confirmed within affected range')
-  } else {
-    reasons.push('Reachability unconfirmed or unknown')
-  }
-
-  if (hasFixed) {
-    reasons.push(`Actionable remediation available (${finding.fixed_version})`)
-  } else {
-    reasons.push('Remediation target unknown (no fixed version published)')
-  }
-
-  if (sev === 'CRITICAL' && isAffected) {
-    return { band: 'Highest', reasons }
-  }
-  if (sev === 'HIGH' && isAffected) {
-    return { band: 'High', reasons }
-  }
-  if (['MEDIUM', 'MODERATE'].includes(sev)) {
-    return { band: 'Medium', reasons }
-  }
-  return { band: 'Low', reasons }
-}
+import { getProjectFindings } from '@/features/projects/projectApi'
+import type { FindingItem } from '@/features/projects/types'
 
 export function RiskPrioritiesPage() {
   const { activeProject } = useProjects()
 
-  const [findings, setFindings] = useState<VulnerabilityFinding[]>([])
+  const [findings, setFindings] = useState<FindingItem[]>([])
   const [selectedBand, setSelectedBand] = useState<string>('ALL')
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadData() {
       if (!activeProject) return
       setIsLoading(true)
+      setError(null)
       try {
-        const data = await getProjectVulnerabilities(activeProject.id)
-        setFindings(data)
+        const data = await getProjectFindings(activeProject.id, {
+          page: 1,
+          page_size: 100,
+          sort_by: 'priority',
+        })
+        setFindings(data.items || [])
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Failed to retrieve ranked vulnerability findings.'
+        setError(msg)
+        setFindings([])
       } finally {
         setIsLoading(false)
       }
@@ -78,30 +41,19 @@ export function RiskPrioritiesPage() {
     void loadData()
   }, [activeProject])
 
-  const rankedFindings: RankedFinding[] = useMemo(() => {
-    return findings.map((f) => {
-      const { band, reasons } = computeDeterministicPriority(f)
-      return {
-        ...f,
-        priorityBand: band,
-        reasons,
-      }
-    })
-  }, [findings])
-
   const filteredRanked = useMemo(() => {
-    if (selectedBand === 'ALL') return rankedFindings
-    return rankedFindings.filter((f) => f.priorityBand === selectedBand)
-  }, [rankedFindings, selectedBand])
+    if (selectedBand === 'ALL') return findings
+    return findings.filter((f) => f.priority.toLowerCase() === selectedBand.toLowerCase())
+  }, [findings, selectedBand])
 
   const bandCounts = useMemo(() => {
     return {
-      Highest: rankedFindings.filter((f) => f.priorityBand === 'Highest').length,
-      High: rankedFindings.filter((f) => f.priorityBand === 'High').length,
-      Medium: rankedFindings.filter((f) => f.priorityBand === 'Medium').length,
-      Low: rankedFindings.filter((f) => f.priorityBand === 'Low').length,
+      Highest: findings.filter((f) => f.priority.toLowerCase() === 'highest').length,
+      High: findings.filter((f) => f.priority.toLowerCase() === 'high').length,
+      Medium: findings.filter((f) => f.priority.toLowerCase() === 'medium').length,
+      Low: findings.filter((f) => f.priority.toLowerCase() === 'low').length,
     }
-  }, [rankedFindings])
+  }, [findings])
 
   if (!activeProject) {
     return (
@@ -120,7 +72,7 @@ export function RiskPrioritiesPage() {
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-bold text-white">Risk Priorities &amp; Ranking</h1>
             <span className="rounded-full bg-sky-500/20 border border-sky-500/30 px-2.5 py-0.5 text-xs font-semibold text-sky-300">
-              US-301 &bull; Deterministic Scoring
+              US-301 &bull; Backend Deterministic Scoring
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
@@ -162,7 +114,7 @@ export function RiskPrioritiesPage() {
             High Priority
           </div>
           <div className="mt-2 text-2xl font-bold text-white">{bandCounts.High}</div>
-          <div className="mt-1 text-[11px] text-slate-400">High severity &bull; Actionable</div>
+          <div className="mt-1 text-[11px] text-slate-400">High Severity &bull; Reachable</div>
         </button>
 
         <button
@@ -178,7 +130,7 @@ export function RiskPrioritiesPage() {
             Medium Priority
           </div>
           <div className="mt-2 text-2xl font-bold text-white">{bandCounts.Medium}</div>
-          <div className="mt-1 text-[11px] text-slate-400">Moderate CVSS impact</div>
+          <div className="mt-1 text-[11px] text-slate-400">Moderate &bull; Unconfirmed</div>
         </button>
 
         <button
@@ -194,7 +146,7 @@ export function RiskPrioritiesPage() {
             Low Priority
           </div>
           <div className="mt-2 text-2xl font-bold text-white">{bandCounts.Low}</div>
-          <div className="mt-1 text-[11px] text-slate-400">Minor / informational</div>
+          <div className="mt-1 text-[11px] text-slate-400">No Path &bull; Triaged Fixed</div>
         </button>
       </div>
 
@@ -203,14 +155,20 @@ export function RiskPrioritiesPage() {
         {isLoading ? (
           <div className="flex flex-col items-center justify-center p-12 text-slate-400">
             <Loader2 className="h-8 w-8 animate-spin text-sky-400" />
-            <span className="mt-3 text-xs">Computing deterministic priority rankings...</span>
+            <span className="mt-3 text-xs">Loading deterministic priority rankings from backend...</span>
+          </div>
+        ) : error ? (
+          <div className="rounded-xl border border-rose-900/50 bg-[#160b0e] p-8 text-center text-xs text-rose-300">
+            <ShieldAlert className="mx-auto h-8 w-8 text-rose-400 mb-2" />
+            <h3 className="font-semibold text-white">Error Loading Risk Priorities</h3>
+            <p className="mt-1 text-rose-400">{error}</p>
           </div>
         ) : filteredRanked.length === 0 ? (
           <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-12 text-center text-xs text-slate-400">
             <Info className="mx-auto h-8 w-8 text-slate-500 mb-2" />
             <h3 className="font-semibold text-white">No findings in selected band</h3>
             <p className="mt-1 text-slate-500">
-              {rankedFindings.length === 0
+              {findings.length === 0
                 ? 'No vulnerability findings have been matched for this project.'
                 : 'Click "All" or another priority band to inspect other findings.'}
             </p>
@@ -219,28 +177,38 @@ export function RiskPrioritiesPage() {
           <div className="space-y-3">
             {filteredRanked.map((item) => (
               <div
-                key={`${item.id}-${item.package_version_id}`}
+                key={item.id}
                 className="rounded-xl border border-slate-800 bg-[#0f1822] p-5 shadow-xl space-y-3"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <span
                       className={`rounded px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${
-                        item.priorityBand === 'Highest'
+                        item.priority.toLowerCase() === 'highest'
                           ? 'bg-red-500/20 text-red-300 border border-red-500/40'
-                          : item.priorityBand === 'High'
+                          : item.priority.toLowerCase() === 'high'
                           ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40'
-                          : item.priorityBand === 'Medium'
+                          : item.priority.toLowerCase() === 'medium'
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                          : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                          : item.priority.toLowerCase() === 'low'
+                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                          : 'bg-slate-700/40 text-slate-300 border border-slate-600'
                       }`}
                     >
-                      {item.priorityBand} Priority
+                      {item.priority} Priority
                     </span>
-                    <span className="font-mono font-bold text-white text-sm">{item.id}</span>
-                    <span className="text-xs text-slate-300 font-semibold">
+                    <span className="font-mono font-bold text-white text-sm">{item.advisory_id}</span>
+                    <span className="text-xs text-slate-300 font-semibold font-mono">
                       {item.package_name}@{item.package_version}
                     </span>
+                    <span className="text-xs text-slate-400">
+                      Service: <strong className="text-slate-200">{item.service_name}</strong>
+                    </span>
+                    {item.scoring_version && (
+                      <span className="rounded bg-slate-800/80 px-2 py-0.5 text-[10px] font-mono text-slate-400 border border-slate-700/60">
+                        Policy: {item.scoring_version}
+                      </span>
+                    )}
                   </div>
 
                   <Link
@@ -252,22 +220,24 @@ export function RiskPrioritiesPage() {
                   </Link>
                 </div>
 
-                <p className="text-xs text-slate-300">{item.summary}</p>
+                <p className="text-xs text-slate-300">{item.advisory_summary || 'No advisory summary provided.'}</p>
 
-                {/* Deterministic Scoring Reasons */}
-                <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-3">
-                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                    Ranking Decision Reasons (US-301):
+                {/* Deterministic Scoring Reasons (US-301) */}
+                {item.priority_reasons && item.priority_reasons.length > 0 && (
+                  <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-3">
+                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                      Ranking Decision Reasons (docs/scoring.md):
+                    </div>
+                    <ul className="space-y-1.5 text-xs text-slate-300">
+                      {item.priority_reasons.map((r, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />
+                          <span>{r}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <ul className="space-y-1 text-xs text-slate-300">
-                    {item.reasons.map((r, i) => (
-                      <li key={i} className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
-                        <span>{r}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                )}
               </div>
             ))}
           </div>

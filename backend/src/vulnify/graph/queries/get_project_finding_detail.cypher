@@ -26,6 +26,7 @@ RETURN s.id AS service_id,
        r.fixed_version AS fixed_version,
        coalesce(r.priority, v.priority, 'unknown') AS priority,
        coalesce(r.triage_status, 'open') AS status,
-       path_depth
+       path_depth,
+       v.fixed_versions AS advisory_fixed_versions
 ORDER BY v.id ASC
 LIMIT 1

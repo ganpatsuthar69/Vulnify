@@ -23,6 +23,7 @@ import {
   getProjectFindings,
   getProjectFindingsSummary,
   listProjectServices,
+  getProjectDataQuality,
 } from '@/features/projects/projectApi'
 import type {
   FindingListResponse,
@@ -30,8 +31,10 @@ import type {
   ProjectService,
   FindingPriority,
   FindingTriageStatus,
+  DataQualityWarning,
 } from '@/features/projects/types'
 import { ProjectApiError } from '@/features/projects/projectApi'
+import { DataQualityBanner } from '@/shared/components/DataQualityBanner'
 
 export function FindingsPage() {
   const { activeProject } = useProjects()
@@ -45,6 +48,7 @@ export function FindingsPage() {
     total_pages: 0,
   })
   const [services, setServices] = useState<ProjectService[]>([])
+  const [warnings, setWarnings] = useState<DataQualityWarning[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [errorRequestId, setErrorRequestId] = useState<string | null>(null)
@@ -141,6 +145,7 @@ export function FindingsPage() {
           service_id: serviceFilter !== 'ALL' ? serviceFilter : undefined,
           status: statusFilter !== 'ALL' ? statusFilter : undefined,
           search: urlSearchTerm.trim() || undefined,
+          sort_by: 'priority',
         })
         setFindingsData(response)
       } catch (err) {
@@ -184,10 +189,21 @@ export function FindingsPage() {
     [priorityFilter, serviceFilter, statusFilter, urlSearchTerm],
   )
 
+  // Fetch project data-quality warnings (US-207)
+  const loadWarnings = useCallback(async (projectId: string) => {
+    try {
+      const dq = await getProjectDataQuality(projectId)
+      setWarnings(dq.warnings || [])
+    } catch {
+      setWarnings([])
+    }
+  }, [])
+
   useEffect(() => {
     if (activeProject) {
       void loadFindings(activeProject.id)
       void loadSummary(activeProject.id)
+      void loadWarnings(activeProject.id)
     } else {
       setFindingsData({
         items: [],
@@ -197,8 +213,9 @@ export function FindingsPage() {
         total_pages: 0,
       })
       setSummaryData(null)
+      setWarnings([])
     }
-  }, [activeProject, loadFindings, loadSummary])
+  }, [activeProject, loadFindings, loadSummary, loadWarnings])
 
   // Filter change handlers
   const handlePriorityChange = (priority: string) => {
@@ -358,6 +375,7 @@ export function FindingsPage() {
             onClick={() => {
               void loadFindings(activeProject.id)
               void loadSummary(activeProject.id)
+              void loadWarnings(activeProject.id)
             }}
             disabled={isLoading || isSummaryLoading}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-50 focus:ring-2 focus:ring-sky-500 focus:outline-none"
@@ -372,6 +390,9 @@ export function FindingsPage() {
           </button>
         </div>
       </div>
+
+      {/* US-207: Data Quality & Scope Warning Banner */}
+      <DataQualityBanner warnings={warnings} />
 
       {/* Findings Error State */}
       {error && (
@@ -725,14 +746,28 @@ export function FindingsPage() {
                     >
                       {/* 1. Priority */}
                       <td className="py-3 px-4 align-top">
-                        <span
-                          className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${getPriorityBadgeClass(
-                            finding.priority,
-                          )}`}
-                          title={`Vulnify Priority: ${finding.priority}`}
-                        >
-                          {finding.priority}
-                        </span>
+                        <div className="flex flex-col items-start gap-1">
+                          <span
+                            className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${getPriorityBadgeClass(
+                              finding.priority,
+                            )}`}
+                            title={
+                              finding.priority_reasons && finding.priority_reasons.length > 0
+                                ? `Vulnify Priority: ${finding.priority}\n\nReasons:\n• ${finding.priority_reasons.join('\n• ')}`
+                                : `Vulnify Priority: ${finding.priority}`
+                            }
+                          >
+                            {finding.priority}
+                          </span>
+                          {finding.priority_reasons && finding.priority_reasons.length > 0 && (
+                            <span
+                              className="text-[10px] text-slate-400 line-clamp-1 max-w-[140px] cursor-help"
+                              title={finding.priority_reasons.join('; ')}
+                            >
+                              {finding.priority_reasons[0]}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* 2. Advisory */}
@@ -808,11 +843,16 @@ export function FindingsPage() {
                           </div>
                         ) : finding.path_status === 'no_path_found' ? (
                           <div
-                            className="inline-flex items-center gap-1 text-slate-400"
-                            title="No reachable path found from service. Does not guarantee safety."
+                            className="inline-flex flex-col gap-0.5 text-slate-400"
+                            title="No reachable path found from service within search depth. Does not guarantee safety."
                           >
-                            <span className="italic">No path found</span>
-                            <HelpCircle className="h-3 w-3 text-slate-500" aria-hidden="true" />
+                            <div className="inline-flex items-center gap-1">
+                              <span className="italic">No path found</span>
+                              <HelpCircle className="h-3 w-3 text-slate-500" aria-hidden="true" />
+                            </div>
+                            <span className="text-[10px] text-amber-300 font-medium">
+                              Safety not guaranteed
+                            </span>
                           </div>
                         ) : (
                           <span className="text-slate-500 italic">Unavailable</span>

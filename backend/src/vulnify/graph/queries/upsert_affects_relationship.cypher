@@ -13,5 +13,7 @@ SET r.status = m.status,
     r.comparator = m.comparator,
     r.evaluated_at = m.evaluated_at,
     r.fingerprint = m.fingerprint,
+    r.priority = m.priority,
+    r.scoring_version = m.scoring_version,
     r.origin = 'version_match'
 RETURN count(r) AS count

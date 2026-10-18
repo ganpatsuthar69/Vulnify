@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { getFindingDependencyPaths, ProjectApiError } from '@/features/projects/projectApi'
 import type { FindingPathsResponse, DependencyPath, PathNode } from '@/features/projects/types'
+import { DataQualityBanner } from '@/shared/components/DataQualityBanner'
 
 // Node data shape for React Flow custom node
 interface DependencyNodeData extends Record<string, unknown> {
@@ -271,16 +272,21 @@ export function DependencyPathVisualizer({
             <span>No Path Found — Absence of Path Does Not Guarantee Safety</span>
           </div>
           <p>
-            No architectural dependency path was found from service &ldquo;{data?.service_name ?? 'service'}&rdquo; to package &ldquo;{data?.package_name ?? 'package'}&rdquo; within the maximum traversal depth of {data?.max_depth_applied ?? 8} hops.
-            This demonstrates that the vulnerable version was not reached through the active dependency tree, but does not provide proof of immunity.
+            {data?.no_path_message || (
+              `No architectural dependency path was found from service "${data?.service_name ?? 'service'}" to package "${data?.package_name ?? 'package'}" within the maximum traversal depth of ${data?.max_depth_applied ?? 8} hops. 'No path found' does not guarantee safety: the target package version is present in the project's dependency manifest and may still be reached via dynamically resolved dependencies, undeclared calls, or out-of-scope services.`
+            )}
           </p>
         </div>
+
+        {data?.warnings && data.warnings.length > 0 && (
+          <DataQualityBanner warnings={data.warnings} />
+        )}
 
         <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-10 text-center text-xs text-slate-400">
           <Info className="mx-auto h-8 w-8 text-slate-500 mb-2" aria-hidden="true" />
           <h3 className="text-sm font-semibold text-white">No Reachable Dependency Path</h3>
           <p className="mt-1 text-slate-400 max-w-md mx-auto">
-            The target package version is not reachable from the service entry point in the current FalkorDB graph.
+            The target package version is not reachable from the service entry point within the bounded search depth of {data?.max_depth_applied ?? 8} hops in the current FalkorDB graph.
           </p>
         </div>
       </div>

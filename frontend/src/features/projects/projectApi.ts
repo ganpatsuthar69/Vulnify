@@ -21,6 +21,9 @@ import type {
   FindingPathsResponse,
   PathNode,
   PathEdge,
+  ProjectDataQualityResponse,
+  UpgradeCandidatesResponse,
+  ProjectUpgradeCandidatesResponse,
 } from './types'
 import { ApiClientError, isMockMode, parseApiError } from '@/shared/api/client'
 import type { ApiClientErrorOptions } from '@/shared/types/api'
@@ -866,7 +869,13 @@ export async function getProjectFindings(
         ecosystem: 'npm',
         package_version: '4.17.20',
         package_version_id: 'npm:lodash@4.17.20',
-        priority: 'unknown',
+        priority: 'High',
+        priority_reasons: [
+          'Advisory severity is High',
+          'Transitive dependency reachable from service (path depth: 2 hops)',
+          'Actionable remediation target available (fixed in >= 4.17.21)',
+        ],
+        scoring_version: 'v1.0.0',
         status: 'open',
         path_depth: 2,
         path_status: 'path_found',
@@ -919,6 +928,7 @@ export async function getProjectFindings(
   if (params?.service_id) queryParams.set('service_id', params.service_id)
   if (params?.status) queryParams.set('status', params.status)
   if (params?.search) queryParams.set('search', params.search)
+  if (params?.sort_by) queryParams.set('sort_by', params.sort_by)
 
   const queryString = queryParams.toString()
   const url = `/api/projects/${encodeURIComponent(projectId)}/findings${queryString ? `?${queryString}` : ''}`
@@ -1190,6 +1200,146 @@ export async function getFindingDependencyPaths(
   await handleErrorResponse(response)
   throw new ProjectApiError('Failed to fetch finding dependency paths.', { status: response.status })
 }
+
+export async function getProjectDataQuality(
+  projectId: string,
+): Promise<ProjectDataQualityResponse> {
+  if (isMockMode()) {
+    return {
+      project_id: projectId,
+      has_warnings: false,
+      warning_count: 0,
+      warnings: [],
+      evaluated_at: Math.floor(Date.now() / 1000),
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/data-quality`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as ProjectDataQualityResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch project data quality warnings.', { status: response.status })
+}
+
+export async function getFindingUpgradeCandidates(
+  projectId: string,
+  findingId: string,
+): Promise<UpgradeCandidatesResponse> {
+  if (isMockMode()) {
+    return {
+      project_id: projectId,
+      finding_id: findingId,
+      advisory_id: 'GHSA-mock-fix',
+      package_name: 'mock-lib',
+      current_version: '1.0.0',
+      ecosystem: 'npm',
+      service_id: `${projectId}:api`,
+      service_name: 'api',
+      path_depth: 1,
+      is_transitive: false,
+      has_fix: true,
+      candidates: [
+        {
+          target_version: '1.0.1',
+          classification: 'recommended',
+          label: 'Recommended',
+          labels: ['recommended', 'patch only'],
+          semver_diff: 'patch',
+          is_recommended: true,
+          fix_status: 'fix_supported',
+          compatibility_status: 'compatible',
+          breaking_change_risk: 'low',
+          caveats: [
+            'Patch-only upgrade (v1.0.0 -> v1.0.1): Backwards-compatible bug and security fix.',
+            'Direct dependency: Check declared manifest constraints in lockfile/manifest.',
+            'Absence of detected conflicts does not guarantee runtime compatibility or application safety. Vulnify never claims an upgrade is safe to ship without project-level integration and regression testing.',
+          ],
+          evidence_source: 'Advisory fixed version declaration',
+        },
+      ],
+      no_fix_message: null,
+      remediation_guidance: 'Review candidate SemVer diffs, check for breaking API changes, and test before applying.',
+      safety_disclaimer:
+        'No upgrade is guaranteed safe to ship. Upstream fixed versions indicate that the security advisory reports the vulnerability as resolved in that release. Upgrades may introduce regressions, breaking changes, or undeclared side effects. Always run test suites and security validation before deploying to production.',
+      evaluated_at: Math.floor(Date.now() / 1000),
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings/${encodeURIComponent(findingId)}/upgrade-candidates`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as UpgradeCandidatesResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch upgrade candidates.', { status: response.status })
+}
+
+export async function getProjectUpgradeCandidates(
+  projectId: string,
+): Promise<ProjectUpgradeCandidatesResponse> {
+  if (isMockMode()) {
+    return {
+      project_id: projectId,
+      total_findings: 1,
+      findings_with_fix: 1,
+      findings_without_fix: 0,
+      items: [],
+      safety_disclaimer:
+        'No upgrade is guaranteed safe to ship. Upstream fixed versions indicate that the security advisory reports the vulnerability as resolved in that release. Upgrades may introduce regressions, breaking changes, or undeclared side effects. Always run test suites and security validation before deploying to production.',
+      evaluated_at: Math.floor(Date.now() / 1000),
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/upgrade-candidates`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as ProjectUpgradeCandidatesResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch project upgrade candidates.', { status: response.status })
+}
+
 
 async function handleErrorResponse(response: Response): Promise<never> {
   if (response.status === 401) {

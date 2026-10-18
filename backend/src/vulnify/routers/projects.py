@@ -37,6 +37,8 @@ from vulnify.schemas import (
     FindingSummaryResponse,
     FindingDetailResponse,
     FindingPathsResponse,
+    DataQualityWarning,
+    ProjectDataQualityResponse,
     ImportSummaryResponse,
     IngestionJobListResponse,
     IngestionJobResponse,
@@ -51,6 +53,17 @@ from vulnify.schemas import (
     PackageVersionResponse,
     UserResponse,
     VulnerabilityFindingResponse,
+    UpgradeCandidateItem,
+    UpgradeCandidatesResponse,
+    ProjectUpgradeCandidatesResponse,
+)
+from vulnify.services.data_quality import (
+    DataQualityService,
+    get_data_quality_service,
+)
+from vulnify.services.upgrade_candidates import (
+    UpgradeCandidatesService,
+    get_upgrade_candidates_service,
 )
 from vulnify.version_matching.service import (
     VersionMatchingService,
@@ -662,11 +675,12 @@ async def list_project_findings(
     service_id: str | None = Query(default=None, description="Filter by service ID"),
     status: str | None = Query(default=None, description="Filter by triage status"),
     search: str | None = Query(default=None, description="Search advisory ID or package name"),
+    sort_by: str | None = Query(default=None, description="Sort order ('priority' for ranked bands with tie-breakers, or default)"),
     current_user: UserResponse = Depends(require_auth),
     project: ProjectRecord = Depends(get_valid_project),
     repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
 ) -> FindingListResponse:
-    """Retrieve paginated, project-scoped vulnerability findings with evidence and path depth."""
+    """Retrieve paginated, project-scoped vulnerability findings with evidence, priority reasons, and path depth."""
     try:
         offset = (page - 1) * page_size
         items, total = repo.get_project_findings(
@@ -677,6 +691,7 @@ async def list_project_findings(
             status=status,
             limit=page_size,
             offset=offset,
+            sort_by=sort_by,
         )
         total_pages = math.ceil(total / page_size) if total > 0 else 0
         return FindingListResponse(
@@ -737,6 +752,38 @@ async def get_project_findings_summary(
 
 
 @router.get(
+    "/{project_id}/data-quality",
+    response_model=ProjectDataQualityResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get project-scoped data quality warnings",
+)
+async def get_project_data_quality(
+    project_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    dq_service: DataQualityService = Depends(get_data_quality_service),
+) -> ProjectDataQualityResponse:
+    """Evaluate and return data quality warnings (missing topology, stale advisories, partial imports)."""
+    try:
+        warnings = dq_service.evaluate_project_warnings(project.id)
+        now = int(datetime.now(timezone.utc).timestamp())
+        return ProjectDataQualityResponse(
+            project_id=project.id,
+            has_warnings=len(warnings) > 0,
+            warning_count=len(warnings),
+            warnings=warnings,
+            evaluated_at=now,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to evaluate project data quality warnings.",
+        ) from exc
+
+
+@router.get(
     "/{project_id}/findings/{finding_id}",
     response_model=FindingDetailResponse,
     status_code=status.HTTP_200_OK,
@@ -748,6 +795,7 @@ async def get_project_finding_detail(
     current_user: UserResponse = Depends(require_auth),
     project: ProjectRecord = Depends(get_valid_project),
     repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+    dq_service: DataQualityService = Depends(get_data_quality_service),
 ) -> FindingDetailResponse:
     """Retrieve evidence, version matching justification, and advisory details for a single finding."""
     try:
@@ -757,7 +805,9 @@ async def get_project_finding_detail(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Finding '{finding_id}' not found in project '{project.id}'.",
             )
-        return FindingDetailResponse(**finding)
+        finding_dict = dict(finding)
+        finding_dict["warnings"] = dq_service.evaluate_finding_warnings(project.id, finding_dict)
+        return FindingDetailResponse(**finding_dict)
     except HTTPException:
         raise
     except Exception as exc:
@@ -781,6 +831,7 @@ async def get_project_finding_paths(
     current_user: UserResponse = Depends(require_auth),
     project: ProjectRecord = Depends(get_valid_project),
     repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+    dq_service: DataQualityService = Depends(get_data_quality_service),
 ) -> FindingPathsResponse:
     """Retrieve shortest dependency paths from root service to the affected package version."""
     try:
@@ -809,6 +860,18 @@ async def get_project_finding_paths(
         now = int(datetime.now(timezone.utc).timestamp())
         has_path = len(paths) > 0
 
+        # AC-1: Honest no-path message with depth and scope bounds
+        no_path_message = None
+        if not has_path:
+            no_path_message = (
+                f"No dependency path was found from service '{service_name}' to package '{package_name}' "
+                f"within the maximum traversal depth of {max_depth} hops. 'No path found' does not guarantee safety: "
+                "the target package version is present in the project's dependency manifest and may still be reached "
+                "via dynamically resolved dependencies, undeclared calls, or out-of-scope services."
+            )
+
+        warnings = dq_service.evaluate_finding_warnings(project.id, finding)
+
         return FindingPathsResponse(
             project_id=project.id,
             finding_id=finding["id"],
@@ -825,6 +888,8 @@ async def get_project_finding_paths(
             is_truncated=is_truncated,
             has_path=has_path,
             evaluated_at=now,
+            no_path_message=no_path_message,
+            warnings=warnings,
         )
     except HTTPException:
         raise
@@ -832,6 +897,61 @@ async def get_project_finding_paths(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve dependency paths from database.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/findings/{finding_id}/upgrade-candidates",
+    response_model=UpgradeCandidatesResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get suggested upgrade targets and compatibility caveats for a finding (US-401)",
+)
+async def get_finding_upgrade_candidates(
+    project_id: str,
+    finding_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    candidates_service: UpgradeCandidatesService = Depends(get_upgrade_candidates_service),
+) -> UpgradeCandidatesResponse:
+    """Retrieve suggested upgrade candidates derived strictly from advisory fixed versions with caveats."""
+    try:
+        candidates = candidates_service.get_finding_upgrade_candidates(project.id, finding_id)
+        if not candidates:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Finding '{finding_id}' not found in project '{project.id}'.",
+            )
+        return candidates
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to evaluate upgrade candidates from database.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/upgrade-candidates",
+    response_model=ProjectUpgradeCandidatesResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List upgrade candidate evaluations for all project findings (US-401 / US-501)",
+)
+async def get_project_upgrade_candidates(
+    project_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    candidates_service: UpgradeCandidatesService = Depends(get_upgrade_candidates_service),
+) -> ProjectUpgradeCandidatesResponse:
+    """Retrieve project-wide upgrade candidate evaluations with SemVer differentials and compatibility caveats."""
+    try:
+        return candidates_service.get_project_upgrade_candidates(project.id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to evaluate project upgrade candidates from database.",
         ) from exc
 
 

@@ -124,6 +124,7 @@ def reset_state(
     mock_vuln_repo.affects_edges.clear()
     mock_vuln_repo.vulnerabilities_data.clear()
     mock_vuln_repo.services.clear()
+    mock_vuln_repo.service_calls.clear()
     mock_vuln_repo.findings_override.clear()
     mock_job_repo._jobs.clear()
 

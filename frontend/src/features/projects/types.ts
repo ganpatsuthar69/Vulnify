@@ -287,6 +287,8 @@ export interface FindingItem {
   package_version: string
   package_version_id: string
   priority: FindingPriority
+  priority_reasons?: string[]
+  scoring_version?: string
   status: FindingTriageStatus
   path_depth: number | null
   path_status: FindingPathStatus
@@ -318,6 +320,7 @@ export interface FindingFilters {
   service_id?: string
   status?: string
   search?: string
+  sort_by?: string
 }
 
 export interface FindingSummaryResponse {
@@ -331,6 +334,7 @@ export interface FindingSummaryResponse {
 export interface FindingDetail extends FindingItem {
   advisory_details: string
   aliases: string[]
+  warnings?: DataQualityWarning[]
 }
 
 // US-204: Dependency Path Types
@@ -388,6 +392,90 @@ export interface FindingPathsResponse {
   limit_applied: number
   is_truncated: boolean
   has_path: boolean
+  evaluated_at: number
+  no_path_message?: string | null
+  warnings?: DataQualityWarning[]
+}
+
+// =====================================================================
+// US-207: Honest Empty and Warning States Types
+// =====================================================================
+
+export type DataQualityCategory =
+  | 'no_path'
+  | 'missing_topology'
+  | 'stale_advisory_data'
+  | 'partial_import'
+
+export type DataQualitySeverity = 'warning' | 'info' | 'error'
+
+export interface DataQualityWarning {
+  code: string
+  category: DataQualityCategory
+  severity: DataQualitySeverity
+  title: string
+  message: string
+  resource_id?: string | null
+  details?: Record<string, unknown>
+}
+
+export interface ProjectDataQualityResponse {
+  project_id: string
+  has_warnings: boolean
+  warning_count: number
+  warnings: DataQualityWarning[]
+  evaluated_at: number
+}
+
+// =====================================================================
+// US-401 / US-501: Upgrade Candidates Types
+// =====================================================================
+
+export type CandidateClassification = 'recommended' | 'major' | 'patch' | 'minor' | 'unknown'
+export type CandidateFixStatus = 'fix_supported' | 'not_fixed' | 'unknown'
+export type CompatibilityStatus = 'compatible' | 'conflict' | 'unknown'
+export type BreakingChangeRisk = 'high' | 'low' | 'unknown'
+
+export interface UpgradeCandidateItem {
+  target_version: string
+  classification: CandidateClassification
+  label: string
+  labels: string[]
+  semver_diff: string
+  is_recommended: boolean
+  fix_status: CandidateFixStatus
+  compatibility_status: CompatibilityStatus
+  breaking_change_risk: BreakingChangeRisk
+  caveats: string[]
+  evidence_source: string
+}
+
+export interface UpgradeCandidatesResponse {
+  project_id: string
+  finding_id: string
+  advisory_id: string
+  package_name: string
+  current_version: string
+  ecosystem: string
+  service_id: string
+  service_name: string
+  path_depth: number | null
+  is_transitive: boolean
+  has_fix: boolean
+  candidates: UpgradeCandidateItem[]
+  no_fix_message: string | null
+  remediation_guidance: string | null
+  safety_disclaimer: string
+  evaluated_at: number
+}
+
+export interface ProjectUpgradeCandidatesResponse {
+  project_id: string
+  total_findings: number
+  findings_with_fix: number
+  findings_without_fix: number
+  items: UpgradeCandidatesResponse[]
+  safety_disclaimer: string
   evaluated_at: number
 }
 
