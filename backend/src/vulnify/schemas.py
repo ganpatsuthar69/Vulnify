@@ -299,6 +299,125 @@ class PackageVersionResponse(BaseModel):
 
 
 # =====================================================================
+# US-201: Findings List Schemas
+# =====================================================================
+
+class ProjectServiceResponse(BaseModel):
+    id: str = Field(..., description="Unique service identifier")
+    name: str = Field(..., description="Service display name")
+
+
+FindingPathStatusLiteral = Literal["path_found", "no_path_found", "unavailable"]
+
+
+class FindingItemResponse(BaseModel):
+    id: str = Field(..., description="Deterministic, unique finding identifier")
+    project_id: str = Field(..., description="Associated project identifier")
+    service_id: str = Field(..., description="Associated service identifier")
+    service_name: str = Field(..., description="Associated service name")
+    advisory_id: str = Field(..., description="OSV or CVE advisory identifier")
+    advisory_summary: str = Field(default="", description="Advisory summary")
+    source_url: str = Field(default="", description="Upstream advisory URL")
+    package_name: str = Field(..., description="Name of affected package")
+    ecosystem: str = Field(..., description="Package ecosystem (npm, PyPI, Cargo, Go)")
+    package_version: str = Field(..., description="Installed/matched package version")
+    package_version_id: str = Field(..., description="PURL or graph identifier of package version")
+    priority: str = Field(default="unknown", description="Vulnify priority band (unknown, Low, Medium, High, Highest)")
+    status: str = Field(default="open", description="Triage status (open, under_investigation, affected, not_affected, fixed)")
+    path_depth: int | None = Field(default=None, description="Shortest dependency path depth from service (1 for direct, >=2 for transitive)")
+    path_status: FindingPathStatusLiteral = Field(default="path_found", description="Status of dependency path evidence")
+    match_reason: str = Field(default="", description="Ecosystem-aware version match explanation")
+    reason_code: str = Field(default="", description="Machine-readable match reason code")
+    matched_range: str | None = Field(default=None, description="Matched advisory version constraint range")
+    fixed_version: str | None = Field(default=None, description="Earliest fixed version")
+    severity: str = Field(default="UNKNOWN", description="Advisory severity from OSV")
+    retrieved_at: int | None = Field(default=None, description="Advisory retrieval timestamp")
+
+
+class FindingListResponse(BaseModel):
+    items: list[FindingItemResponse] = Field(default_factory=list, description="Paginated finding items")
+    page: int = Field(..., description="Current page (1-indexed)")
+    page_size: int = Field(..., description="Requested page size")
+    total: int = Field(..., description="Total matching findings for active filters")
+    total_pages: int = Field(..., description="Total available pages")
+
+
+class FindingSummaryResponse(BaseModel):
+    project_id: str = Field(..., description="Project workspace identifier")
+    advisory_matches: int = Field(..., ge=0, description="Total matching advisory findings")
+    findings_with_path: int = Field(..., ge=0, description="Findings with confirmed dependency path")
+    findings_without_path: int = Field(..., ge=0, description="Findings without confirmed dependency path")
+    findings_needing_decision: int = Field(..., ge=0, description="Findings requiring a triage decision")
+
+
+class FindingDetailResponse(FindingItemResponse):
+    advisory_details: str = Field(default="", description="Full advisory text and description from OSV")
+    aliases: list[str] = Field(default_factory=list, description="Related identifiers such as CVEs or GHSAs")
+
+
+# =====================================================================
+# US-204: Dependency Path Visualization Schemas
+# =====================================================================
+
+class NodeProvenance(BaseModel):
+    source_filename: str | None = Field(default=None, description="Imported lockfile or manifest filename")
+    content_hash: str | None = Field(default=None, description="SHA-256 digest of import source")
+    imported_at: int | None = Field(default=None, description="Timestamp of dependency graph ingestion")
+    classification: str = Field(default="manifest", description="Provenance classification (manifest, lockfile, synthetic)")
+    origin: str = Field(default="stored_graph", description="Data origin guarantee")
+
+
+class PathNode(BaseModel):
+    id: str = Field(..., description="Unique node identifier in graph")
+    node_type: Literal["service", "package"] = Field(..., description="Entity classification")
+    display_name: str = Field(..., description="Human-readable label for graph node")
+    package_name: str | None = Field(default=None, description="Package name if package node")
+    package_version: str | None = Field(default=None, description="Package version if package node")
+    ecosystem: str | None = Field(default=None, description="Ecosystem if package node")
+    purl: str | None = Field(default=None, description="Package URL if package node")
+    is_target: bool = Field(default=False, description="Whether this node is the affected package version")
+    is_entry_point: bool = Field(default=False, description="Whether this node is the service entry point")
+    provenance: NodeProvenance = Field(default_factory=NodeProvenance, description="Provenance audit details")
+
+
+class PathEdge(BaseModel):
+    id: str = Field(..., description="Unique edge identifier")
+    source_id: str = Field(..., description="Source node ID")
+    target_id: str = Field(..., description="Target node ID")
+    relationship_type: str = Field(default="DEPENDS_ON", description="Graph relationship type")
+    direct: bool = Field(default=False, description="True if direct dependency from service, false if transitive")
+    origin: str = Field(default="manifest", description="Relationship provenance origin")
+
+
+class DependencyPath(BaseModel):
+    id: str = Field(..., description="Deterministic, unique path identifier")
+    depth: int = Field(..., description="Path depth (hop count / edge count)")
+    is_direct: bool = Field(..., description="True if depth == 1 (direct dependency)")
+    nodes: list[PathNode] = Field(default_factory=list, description="Ordered nodes from service to affected package")
+    edges: list[PathEdge] = Field(default_factory=list, description="Ordered dependency edges along the path")
+    summary_text: str = Field(default="", description="Semantic screen-reader accessible path summary")
+
+
+class FindingPathsResponse(BaseModel):
+    project_id: str = Field(..., description="Associated project identifier")
+    finding_id: str = Field(..., description="Finding identifier")
+    service_id: str = Field(..., description="Root service identifier")
+    service_name: str = Field(..., description="Root service name")
+    advisory_id: str = Field(..., description="Target OSV / CVE advisory identifier")
+    package_name: str = Field(..., description="Target affected package name")
+    package_version: str = Field(..., description="Target affected package version")
+    package_version_id: str = Field(..., description="Target affected package version node ID")
+    paths: list[DependencyPath] = Field(default_factory=list, description="Ordered shortest dependency paths")
+    total_paths_found: int = Field(..., description="Total paths found within search bounds")
+    max_depth_applied: int = Field(..., description="Traversal depth limit applied")
+    limit_applied: int = Field(..., description="Path count limit applied")
+    is_truncated: bool = Field(default=False, description="True if more paths exist beyond limit_applied")
+    has_path: bool = Field(..., description="True if at least one dependency path exists")
+    evaluated_at: int = Field(..., description="Evaluation timestamp")
+
+
+
+# =====================================================================
 # US-105: Ingestion Jobs & History Schemas
 # =====================================================================
 

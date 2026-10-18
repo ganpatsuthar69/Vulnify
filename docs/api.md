@@ -1115,6 +1115,322 @@ Retries an eligible failed or partial ingestion job, creating a new execution re
 - **`401 Unauthorized`**: Authentication required.
 - **`404 Not Found`**: Ingestion job not found for project.
 
+---
+
+### 14. `GET /api/projects/{project_id}/services`
+
+Retrieves all distinct services associated with a project, ordered alphabetically by service name. Used to populate the service filter dropdown in the findings list without hardcoding service names.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/services`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### Responses
+- **`200 OK`**: List of distinct services for the project.
+  - **Body**:
+    ```json
+    [
+      {
+        "id": "proj-uuid:api-service",
+        "name": "api-service"
+      },
+      {
+        "id": "proj-uuid:web-frontend",
+        "name": "web-frontend"
+      }
+    ]
+    ```
+- **`401 Unauthorized`**: Authentication required.
+- **`404 Not Found`**: Project not found.
+
+---
+
+### 15. `GET /api/projects/{project_id}/findings` (US-201)
+
+Retrieves server-paginated, project-scoped confirmed vulnerability findings grounded in FalkorDB dependency paths and version-matching evidence.
+
+#### Query Parameters
+- **`page`** (integer, optional, default: `1`, minimum: `1`): 1-indexed page number.
+- **`page_size`** (integer, optional, default: `25`, minimum: `1`, maximum: `100`): Findings per page.
+- **`priority`** (string, optional): Filter by Vulnify priority band (`Highest`, `High`, `Medium`, `Low`, `unknown`). Case-insensitive.
+- **`service_id`** (string, optional): Filter by associated service identifier.
+- **`status`** (string, optional): Filter by triage status (`open`, `under_investigation`, `affected`, `not_affected`, `fixed`). Case-insensitive. Default un-triaged status is `open`.
+- **`search`** (string, optional): Case-insensitive text search matching either advisory ID (e.g. `GHSA-29mw-wpgm-hmr9`) or package name (e.g. `lodash`).
+
+#### Semantics & Distinctions
+- **Project Scoping**: Only findings associated with services and package versions belonging to the specified project are returned.
+- **Deduplication**: When multiple paths connect a service to the same affected package version, the finding is deduplicated to the shortest dependency path.
+- **Path Depth**: Distance in hops from the root service to the affected package version. Depth 1 indicates a direct dependency; depth ≥ 2 indicates a transitive dependency.
+- **Path Status**:
+  - `path_found`: A verified dependency path was found in the graph.
+  - `no_path_found`: No dependency path was found from the service to the affected package version. (Does not guarantee safety).
+  - `unavailable`: Topology data or dependency analysis was unavailable for the target.
+- **Priority**: Vulnify priority band. Unranked findings explicitly return `unknown` rather than fabricating zero risk or exploiting scores.
+
+#### Responses
+- **`200 OK`**: Paginated finding results.
+  - **Body**:
+    ```json
+    {
+      "items": [
+        {
+          "id": "find-a1b2c3d4e5f67890",
+          "project_id": "893c5240-a19e-4c55-b8ea-a3d538eec612",
+          "service_id": "893c5240-a19e-4c55-b8ea-a3d538eec612:payment-api",
+          "service_name": "payment-api",
+          "advisory_id": "GHSA-29mw-wpgm-hmr9",
+          "advisory_summary": "Regular Expression Denial of Service (ReDoS) in lodash",
+          "source_url": "https://github.com/advisories/GHSA-29mw-wpgm-hmr9",
+          "package_name": "lodash",
+          "ecosystem": "npm",
+          "package_version": "4.17.20",
+          "package_version_id": "npm:lodash@4.17.20",
+          "priority": "unknown",
+          "status": "open",
+          "path_depth": 2,
+          "path_status": "path_found",
+          "match_reason": "Version 4.17.20 is within affected range (< 4.17.21) for advisory GHSA-29mw-wpgm-hmr9.",
+          "reason_code": "WITHIN_AFFECTED_RANGE",
+          "matched_range": "< 4.17.21",
+          "fixed_version": "4.17.21",
+          "severity": "HIGH",
+          "retrieved_at": 1729172000
+        }
+      ],
+      "page": 1,
+      "page_size": 25,
+      "total": 1,
+      "total_pages": 1
+    }
+    ```
+- **`401 Unauthorized`**: Authentication required (`AUTHENTICATION_REQUIRED`).
+- **`404 Not Found`**: Project not found (`PROJECT_NOT_FOUND`).
+- **`422 Unprocessable Entity`**: Invalid query parameters (e.g. `page < 1` or `page_size > 100`).
+- **`500 Internal Server Error`**: FalkorDB connection or query failure (`INTERNAL_SERVER_ERROR`).
+
+---
+
+### 16. `GET /api/projects/{project_id}/findings/summary` (US-202)
+
+Retrieves server-aggregated finding count metrics for summary cards on the Findings page, computed from stored FalkorDB graph relationships.
+
+#### Query Parameters
+All query parameters are optional and apply the identical filter scope as the Findings List (`GET /api/projects/{project_id}/findings`), ensuring the summary card metrics always reconcile with the table totals.
+- **`priority`** (string, optional): Filter by Vulnify priority band (`Highest`, `High`, `Medium`, `Low`, `unknown`). Case-insensitive.
+- **`service_id`** (string, optional): Filter by associated service identifier.
+- **`status`** (string, optional): Filter by triage status (`open`, `under_investigation`, `affected`, `not_affected`, `fixed`). Case-insensitive.
+- **`search`** (string, optional): Case-insensitive text search matching either advisory ID or package name.
+
+#### Metrics and Semantics
+- **`advisory_matches`**: Total number of confirmed vulnerability findings matching the project and active filters (`r.status = 'affected'`). Corresponds exactly to `total` from the findings list.
+- **`findings_with_path`**: Number of findings with a confirmed architectural dependency path from a service to the affected package version (`path_status = 'path_found'` / `path_depth >= 1`).
+- **`findings_without_path`**: Number of findings where no architectural dependency path could be traced (`path_status = 'no_path_found'` / `path_depth IS NULL`). Reconciles such that `findings_with_path + findings_without_path == advisory_matches`.
+- **`findings_needing_decision`**: Number of findings that require a human triage decision (`status IN ['open', 'under_investigation']`). Findings with completed decisions (`affected`, `not_affected`, `fixed`) are excluded.
+
+#### Responses
+- **`200 OK`**: Summary metrics for the project.
+  - **Body**:
+    ```json
+    {
+      "project_id": "893c5240-a19e-4c55-b8ea-a3d538eec612",
+      "advisory_matches": 100,
+      "findings_with_path": 65,
+      "findings_without_path": 35,
+      "findings_needing_decision": 20
+    }
+    ```
+- **`401 Unauthorized`**: Authentication required (`AUTHENTICATION_REQUIRED`).
+- **`404 Not Found`**: Project not found (`PROJECT_NOT_FOUND`).
+- **`500 Internal Server Error`**: FalkorDB connection or query failure (`INTERNAL_SERVER_ERROR`).
+
+---
+
+### 17. `GET /api/projects/{project_id}/findings/{finding_id}` (US-203)
+
+Retrieves full security evidence, version-matching justification, advisory metadata, and reachability path information for a single finding within a project.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/findings/{finding_id}`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### URL Parameters
+- **`project_id`** (string, required): Associated project identifier.
+- **`finding_id`** (string, required): Deterministic finding ID (e.g., `find-a1b2c3d4e5f67890`) or advisory identifier (e.g., `GHSA-29mw-wpgm-hmr9`).
+
+#### Security & Rendering Note
+Advisory text (`advisory_details`, `advisory_summary`) is untrusted input from external vulnerability databases (OSV/NVD). Clients must render this content as **plain text only** with no raw HTML evaluation or injection.
+
+#### Responses
+- **`200 OK`**: Complete finding detail with full evidence and justification.
+  - **Body**:
+    ```json
+    {
+      "id": "find-a1b2c3d4e5f67890",
+      "project_id": "893c5240-a19e-4c55-b8ea-a3d538eec612",
+      "service_id": "893c5240-a19e-4c55-b8ea-a3d538eec612:payment-api",
+      "service_name": "payment-api",
+      "advisory_id": "GHSA-29mw-wpgm-hmr9",
+      "advisory_summary": "Regular Expression Denial of Service (ReDoS) in lodash",
+      "advisory_details": "All versions of package lodash prior to 4.17.21 are vulnerable to Regular Expression Denial of Service (ReDoS)...",
+      "severity": "HIGH",
+      "source_url": "https://github.com/advisories/GHSA-29mw-wpgm-hmr9",
+      "retrieved_at": 1729172000,
+      "aliases": ["CVE-2020-28500"],
+      "package_name": "lodash",
+      "ecosystem": "npm",
+      "package_version": "4.17.20",
+      "package_version_id": "npm:lodash@4.17.20",
+      "priority": "unknown",
+      "status": "open",
+      "path_depth": 2,
+      "path_status": "path_found",
+      "match_reason": "Version 4.17.20 is within affected range (< 4.17.21) for advisory GHSA-29mw-wpgm-hmr9.",
+      "reason_code": "WITHIN_AFFECTED_RANGE",
+      "matched_range": "< 4.17.21",
+      "fixed_version": "4.17.21"
+    }
+    ```
+- **`401 Unauthorized`**: Authentication required (`AUTHENTICATION_REQUIRED`).
+- **`404 Not Found`**: Project or finding not found (`PROJECT_NOT_FOUND` or `Finding '...' not found in project '...'`).
+- **`500 Internal Server Error`**: Database query failure (`INTERNAL_SERVER_ERROR`).
+
+---
+
+### 18. `GET /api/projects/{project_id}/findings/{finding_id}/paths` (US-204)
+
+Retrieves bounded, deterministic shortest dependency paths from the root service to an affected package version, including intermediate dependency nodes, edges, provenance metadata, and screen-reader accessible summaries.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/findings/{finding_id}/paths`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### URL Parameters
+- **`project_id`** (string, required): Associated project identifier.
+- **`finding_id`** (string, required): Deterministic finding ID or advisory ID.
+
+#### Query Parameters
+- **`max_depth`** (integer, optional, default: `8`, min: `1`, max: `15`): Maximum traversal depth bound.
+- **`limit`** (integer, optional, default: `5`, min: `1`, max: `20`): Maximum number of shortest paths to return.
+
+#### Semantics & Distinctions
+- **Shortest-First Order**: Direct dependencies (`depth: 1`, `is_direct: true`) appear before transitive dependencies (`depth: 2+`, `is_direct: false`).
+- **Provenance on Every Node**: Each node exposes import source filename, content hash, imported_at timestamp, and classification (`manifest`). If provenance is unavailable, explicit `null` values are returned rather than fabricated data.
+- **Honesty Guarantee**: If no path is found within search bounds (`has_path: false`, `paths: []`), this indicates absence of an architectural path, not a guarantee of security or exploitability immunity.
+- **Cycle & Duplicate Elimination**: Paths with cyclic node repetitions or duplicate node sequences are eliminated in the backend engine.
+
+#### Responses
+- **`200 OK`**: Shortest bounded dependency paths.
+  - **Body**:
+    ```json
+    {
+      "project_id": "893c5240-a19e-4c55-b8ea-a3d538eec612",
+      "finding_id": "find-a1b2c3d4e5f67890",
+      "service_id": "893c5240-a19e-4c55-b8ea-a3d538eec612:payment-api",
+      "service_name": "payment-api",
+      "advisory_id": "GHSA-29mw-wpgm-hmr9",
+      "package_name": "lodash",
+      "package_version": "4.17.20",
+      "package_version_id": "npm:lodash@4.17.20",
+      "paths": [
+        {
+          "id": "path-0123456789abcdef",
+          "depth": 2,
+          "is_direct": false,
+          "nodes": [
+            {
+              "id": "893c5240-a19e-4c55-b8ea-a3d538eec612:payment-api",
+              "node_type": "service",
+              "display_name": "payment-api",
+              "package_name": null,
+              "package_version": null,
+              "ecosystem": null,
+              "purl": null,
+              "is_target": false,
+              "is_entry_point": true,
+              "provenance": {
+                "source_filename": "package-lock.json",
+                "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "imported_at": 1729172000,
+                "classification": "manifest",
+                "origin": "stored_graph"
+              }
+            },
+            {
+              "id": "npm:express@4.17.1",
+              "node_type": "package",
+              "display_name": "express@4.17.1",
+              "package_name": "express",
+              "package_version": "4.17.1",
+              "ecosystem": "npm",
+              "purl": "pkg:npm/express@4.17.1",
+              "is_target": false,
+              "is_entry_point": false,
+              "provenance": {
+                "source_filename": "package-lock.json",
+                "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "imported_at": 1729172000,
+                "classification": "manifest",
+                "origin": "stored_graph"
+              }
+            },
+            {
+              "id": "npm:lodash@4.17.20",
+              "node_type": "package",
+              "display_name": "lodash@4.17.20",
+              "package_name": "lodash",
+              "package_version": "4.17.20",
+              "ecosystem": "npm",
+              "purl": "pkg:npm/lodash@4.17.20",
+              "is_target": true,
+              "is_entry_point": false,
+              "provenance": {
+                "source_filename": "package-lock.json",
+                "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "imported_at": 1729172000,
+                "classification": "manifest",
+                "origin": "stored_graph"
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "edge-893c5240-a19e-4c55-b8ea-a3d538eec612:payment-api->npm:express@4.17.1",
+              "source_id": "893c5240-a19e-4c55-b8ea-a3d538eec612:payment-api",
+              "target_id": "npm:express@4.17.1",
+              "relationship_type": "DEPENDS_ON",
+              "direct": true,
+              "origin": "manifest"
+            },
+            {
+              "id": "edge-npm:express@4.17.1->npm:lodash@4.17.20",
+              "source_id": "npm:express@4.17.1",
+              "target_id": "npm:lodash@4.17.20",
+              "relationship_type": "DEPENDS_ON",
+              "direct": false,
+              "origin": "manifest"
+            }
+          ],
+          "summary_text": "Service: payment-api → express@4.17.1 → lodash@4.17.20"
+        }
+      ],
+      "total_paths_found": 1,
+      "max_depth_applied": 8,
+      "limit_applied": 5,
+      "is_truncated": false,
+      "has_path": true,
+      "evaluated_at": 1729172000
+    }
+    ```
+- **`401 Unauthorized`**: Authentication required (`AUTHENTICATION_REQUIRED`).
+- **`404 Not Found`**: Project or finding not found (`PROJECT_NOT_FOUND` or `Finding '...' not found in project '...'`).
+- **`422 Unprocessable Entity`**: Invalid depth or limit query parameter.
+- **`500 Internal Server Error`**: Database query failure (`INTERNAL_SERVER_ERROR`).
 
 
 

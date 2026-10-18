@@ -5,7 +5,7 @@ import hashlib
 import math
 import time
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from vulnify.config import Settings, get_settings
 from vulnify.dependencies import get_valid_project, require_auth
@@ -16,6 +16,10 @@ from vulnify.graph.project_repository import (
     IProjectRepository,
     ProjectRecord,
     get_project_repository,
+)
+from vulnify.graph.vulnerability_repository import (
+    IVulnerabilityRepository,
+    get_vulnerability_repository,
 )
 from vulnify.models import IngestionJobRecord, JobStatus, JobType
 from vulnify.osv.service import OsvService, get_osv_service
@@ -28,6 +32,11 @@ from vulnify.parsers.registry import (
 from vulnify.schemas import (
     SERVICE_NAME_REGEX,
     SUPPORTED_ECOSYSTEMS,
+    FindingItemResponse,
+    FindingListResponse,
+    FindingSummaryResponse,
+    FindingDetailResponse,
+    FindingPathsResponse,
     ImportSummaryResponse,
     IngestionJobListResponse,
     IngestionJobResponse,
@@ -38,6 +47,7 @@ from vulnify.schemas import (
     ProjectCreateRequest,
     ProjectMatchResponse,
     ProjectResponse,
+    ProjectServiceResponse,
     PackageVersionResponse,
     UserResponse,
     VulnerabilityFindingResponse,
@@ -610,6 +620,218 @@ async def get_project_vulnerabilities(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve vulnerability findings from database.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/services",
+    response_model=list[ProjectServiceResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List all distinct services for a project",
+)
+async def list_project_services(
+    project_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+) -> list[ProjectServiceResponse]:
+    """Retrieve distinct services associated with the project."""
+    try:
+        raw_services = repo.list_project_services(project.id)
+        return [ProjectServiceResponse(id=s["id"], name=s["name"]) for s in raw_services]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve project services from database.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/findings",
+    response_model=FindingListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List confirmed vulnerability findings with path depth and triage status",
+)
+async def list_project_findings(
+    project_id: str,
+    page: int = Query(default=1, ge=1, description="Page number, 1-indexed"),
+    page_size: int = Query(default=25, ge=1, le=100, description="Items per page (max 100)"),
+    priority: str | None = Query(default=None, description="Filter by priority band"),
+    service_id: str | None = Query(default=None, description="Filter by service ID"),
+    status: str | None = Query(default=None, description="Filter by triage status"),
+    search: str | None = Query(default=None, description="Search advisory ID or package name"),
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+) -> FindingListResponse:
+    """Retrieve paginated, project-scoped vulnerability findings with evidence and path depth."""
+    try:
+        offset = (page - 1) * page_size
+        items, total = repo.get_project_findings(
+            project_id=project.id,
+            service_id=service_id,
+            search=search,
+            priority=priority,
+            status=status,
+            limit=page_size,
+            offset=offset,
+        )
+        total_pages = math.ceil(total / page_size) if total > 0 else 0
+        return FindingListResponse(
+            items=[FindingItemResponse(**item) for item in items],
+            page=page,
+            page_size=page_size,
+            total=total,
+            total_pages=total_pages,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve project findings from database.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/findings/summary",
+    response_model=FindingSummaryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get aggregated finding counts for summary cards",
+)
+async def get_project_findings_summary(
+    project_id: str,
+    priority: str | None = Query(default=None, description="Filter by priority band"),
+    service_id: str | None = Query(default=None, description="Filter by service ID"),
+    triage_status: str | None = Query(default=None, alias="status", description="Filter by triage status"),
+    search: str | None = Query(default=None, description="Search advisory ID or package name"),
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+) -> FindingSummaryResponse:
+    """Retrieve aggregated finding metrics for the project and active filters."""
+    try:
+        summary_counts = repo.get_project_findings_summary(
+            project_id=project.id,
+            service_id=service_id,
+            search=search,
+            priority=priority,
+            status=triage_status,
+        )
+        return FindingSummaryResponse(
+            project_id=project.id,
+            advisory_matches=summary_counts["advisory_matches"],
+            findings_with_path=summary_counts["findings_with_path"],
+            findings_without_path=summary_counts["findings_without_path"],
+            findings_needing_decision=summary_counts["findings_needing_decision"],
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve project findings summary from database.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/findings/{finding_id}",
+    response_model=FindingDetailResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get detailed evidence and advisory information for a specific finding",
+)
+async def get_project_finding_detail(
+    project_id: str,
+    finding_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+) -> FindingDetailResponse:
+    """Retrieve evidence, version matching justification, and advisory details for a single finding."""
+    try:
+        finding = repo.get_project_finding_detail(project.id, finding_id)
+        if not finding:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Finding '{finding_id}' not found in project '{project.id}'.",
+            )
+        return FindingDetailResponse(**finding)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve finding detail from database.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/findings/{finding_id}/paths",
+    response_model=FindingPathsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get shortest bounded dependency paths from service to affected package",
+)
+async def get_project_finding_paths(
+    project_id: str,
+    finding_id: str,
+    max_depth: int = Query(default=8, ge=1, le=15, description="Maximum dependency path depth"),
+    limit: int = Query(default=5, ge=1, le=20, description="Maximum number of shortest paths to return"),
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+) -> FindingPathsResponse:
+    """Retrieve shortest dependency paths from root service to the affected package version."""
+    try:
+        finding = repo.get_project_finding_detail(project.id, finding_id)
+        if not finding:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Finding '{finding_id}' not found in project '{project.id}'.",
+            )
+
+        service_id = finding["service_id"]
+        service_name = finding["service_name"]
+        package_version_id = finding["package_version_id"]
+        package_name = finding["package_name"]
+        package_version = finding["package_version"]
+        advisory_id = finding["advisory_id"]
+
+        paths, is_truncated, total_found = repo.get_finding_dependency_paths(
+            project_id=project.id,
+            service_id=service_id,
+            package_version_id=package_version_id,
+            max_depth=max_depth,
+            limit=limit,
+        )
+
+        now = int(datetime.now(timezone.utc).timestamp())
+        has_path = len(paths) > 0
+
+        return FindingPathsResponse(
+            project_id=project.id,
+            finding_id=finding["id"],
+            service_id=service_id,
+            service_name=service_name,
+            advisory_id=advisory_id,
+            package_name=package_name,
+            package_version=package_version,
+            package_version_id=package_version_id,
+            paths=paths,
+            total_paths_found=total_found,
+            max_depth_applied=max_depth,
+            limit_applied=limit,
+            is_truncated=is_truncated,
+            has_path=has_path,
+            evaluated_at=now,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve dependency paths from database.",
         ) from exc
 
 

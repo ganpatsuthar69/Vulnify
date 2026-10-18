@@ -12,9 +12,19 @@ import type {
   IngestionJobListResponse,
   JobRetryResponse,
   ListJobsFilterParams,
+  FindingItem,
+  FindingListResponse,
+  ProjectService,
+  FindingFilters,
+  FindingSummaryResponse,
+  FindingDetail,
+  FindingPathsResponse,
+  PathNode,
+  PathEdge,
 } from './types'
 import { ApiClientError, isMockMode, parseApiError } from '@/shared/api/client'
 import type { ApiClientErrorOptions } from '@/shared/types/api'
+import { notifyUnauthorized } from '@/features/auth/authApi'
 
 export class ProjectApiError extends ApiClientError {
   constructor(
@@ -809,8 +819,382 @@ export async function retryIngestionJob(
   throw new ProjectApiError('Failed to retry ingestion job.', { status: response.status })
 }
 
+export async function listProjectServices(projectId: string): Promise<ProjectService[]> {
+  if (isMockMode()) {
+    return [
+      { id: `${projectId}:payment-api`, name: 'payment-api' },
+      { id: `${projectId}:auth-api`, name: 'auth-api' },
+    ]
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/services`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as ProjectService[]
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch project services.', { status: response.status })
+}
+
+export async function getProjectFindings(
+  projectId: string,
+  params?: FindingFilters,
+): Promise<FindingListResponse> {
+  if (isMockMode()) {
+    const mockFindings: FindingItem[] = [
+      {
+        id: 'mock-finding-1',
+        project_id: projectId,
+        service_id: `${projectId}:payment-api`,
+        service_name: 'payment-api',
+        advisory_id: 'GHSA-29mw-wpgm-hmr9',
+        advisory_summary: 'Regular Expression Denial of Service (ReDoS) in lodash',
+        source_url: 'https://github.com/advisories/GHSA-29mw-wpgm-hmr9',
+        package_name: 'lodash',
+        ecosystem: 'npm',
+        package_version: '4.17.20',
+        package_version_id: 'npm:lodash@4.17.20',
+        priority: 'unknown',
+        status: 'open',
+        path_depth: 2,
+        path_status: 'path_found',
+        match_reason: 'Version 4.17.20 is within affected range (< 4.17.21) for advisory GHSA-29mw-wpgm-hmr9.',
+        reason_code: 'WITHIN_AFFECTED_RANGE',
+        matched_range: '< 4.17.21',
+        fixed_version: '4.17.21',
+        severity: 'HIGH',
+        retrieved_at: Math.floor(Date.now() / 1000) - 3600,
+      },
+    ]
+
+    let filtered = [...mockFindings]
+    if (params?.service_id) {
+      filtered = filtered.filter((f) => f.service_id === params.service_id)
+    }
+    if (params?.search) {
+      const q = params.search.toLowerCase()
+      filtered = filtered.filter(
+        (f) => f.advisory_id.toLowerCase().includes(q) || f.package_name.toLowerCase().includes(q),
+      )
+    }
+    if (params?.priority) {
+      filtered = filtered.filter((f) => f.priority.toLowerCase() === params.priority?.toLowerCase())
+    }
+    if (params?.status) {
+      filtered = filtered.filter((f) => f.status.toLowerCase() === params.status?.toLowerCase())
+    }
+
+    const pageSize = params?.page_size ?? 25
+    const page = params?.page ?? 1
+    const total = filtered.length
+    const totalPages = Math.ceil(total / pageSize)
+    const offset = (page - 1) * pageSize
+    const items = filtered.slice(offset, offset + pageSize)
+
+    return {
+      items,
+      page,
+      page_size: pageSize,
+      total,
+      total_pages: totalPages,
+    }
+  }
+
+  const queryParams = new URLSearchParams()
+  if (params?.page) queryParams.set('page', String(params.page))
+  if (params?.page_size) queryParams.set('page_size', String(params.page_size))
+  if (params?.priority) queryParams.set('priority', params.priority)
+  if (params?.service_id) queryParams.set('service_id', params.service_id)
+  if (params?.status) queryParams.set('status', params.status)
+  if (params?.search) queryParams.set('search', params.search)
+
+  const queryString = queryParams.toString()
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings${queryString ? `?${queryString}` : ''}`
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as FindingListResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch project findings.', { status: response.status })
+}
+
+export async function getProjectFindingsSummary(
+  projectId: string,
+  params?: FindingFilters,
+): Promise<FindingSummaryResponse> {
+  if (isMockMode()) {
+    const listResponse = await getProjectFindings(projectId, params)
+    const items = listResponse.items
+    const withPath = items.filter(
+      (f) => f.path_status === 'path_found' || (f.path_depth !== null && f.path_depth >= 1),
+    ).length
+    const withoutPath = items.length - withPath
+    const needingDecision = items.filter((f) =>
+      ['open', 'under_investigation'].includes(f.status.toLowerCase()),
+    ).length
+    return {
+      project_id: projectId,
+      advisory_matches: listResponse.total,
+      findings_with_path: withPath,
+      findings_without_path: withoutPath,
+      findings_needing_decision: needingDecision,
+    }
+  }
+
+  const queryParams = new URLSearchParams()
+  if (params?.priority) queryParams.set('priority', params.priority)
+  if (params?.service_id) queryParams.set('service_id', params.service_id)
+  if (params?.status) queryParams.set('status', params.status)
+  if (params?.search) queryParams.set('search', params.search)
+
+  const queryString = queryParams.toString()
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings/summary${queryString ? `?${queryString}` : ''}`
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as FindingSummaryResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch project findings summary.', { status: response.status })
+}
+
+export async function getProjectFindingDetail(
+  projectId: string,
+  findingId: string,
+): Promise<FindingDetail> {
+  if (isMockMode()) {
+    const list = await getProjectFindings(projectId, { page: 1, page_size: 100 })
+    const item = list.items.find(
+      (f) =>
+        f.id.toLowerCase() === findingId.toLowerCase() ||
+        f.advisory_id.toLowerCase() === findingId.toLowerCase(),
+    )
+    if (!item) {
+      throw new ProjectApiError(`Finding '${findingId}' not found in project '${projectId}'.`, {
+        status: 404,
+        code: 'NOT_FOUND',
+      })
+    }
+    return {
+      ...item,
+      advisory_details:
+        item.advisory_summary ||
+        `Detailed description for advisory ${item.advisory_id} affecting package ${item.package_name}.`,
+      aliases: [],
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings/${encodeURIComponent(findingId)}`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as FindingDetail
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch finding detail.', { status: response.status })
+}
+
+export async function getFindingDependencyPaths(
+  projectId: string,
+  findingId: string,
+  params?: { max_depth?: number; limit?: number },
+): Promise<FindingPathsResponse> {
+  if (isMockMode()) {
+    const detail = await getProjectFindingDetail(projectId, findingId)
+    const isDirect = (detail.path_depth ?? 1) === 1
+    const serviceNodeId = detail.service_id
+    const targetNodeId = detail.package_version_id
+
+    const nodes: PathNode[] = [
+      {
+        id: serviceNodeId,
+        node_type: 'service',
+        display_name: detail.service_name,
+        is_target: false,
+        is_entry_point: true,
+        provenance: {
+          source_filename: 'package-lock.json',
+          content_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+          imported_at: Math.floor(Date.now() / 1000) - 3600,
+          classification: 'manifest',
+          origin: 'stored_graph',
+        },
+      },
+    ]
+
+    const edges: PathEdge[] = []
+
+    if (!isDirect) {
+      const intermediateId = `${detail.ecosystem}:intermediate-lib@1.0.0`
+      nodes.push({
+        id: intermediateId,
+        node_type: 'package' as const,
+        display_name: 'intermediate-lib@1.0.0',
+        package_name: 'intermediate-lib',
+        package_version: '1.0.0',
+        ecosystem: detail.ecosystem,
+        purl: `pkg:${detail.ecosystem}/intermediate-lib@1.0.0`,
+        is_target: false,
+        is_entry_point: false,
+        provenance: {
+          source_filename: 'package-lock.json',
+          content_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+          imported_at: Math.floor(Date.now() / 1000) - 3600,
+          classification: 'manifest',
+          origin: 'stored_graph',
+        },
+      })
+      edges.push({
+        id: `edge-${serviceNodeId}->${intermediateId}`,
+        source_id: serviceNodeId,
+        target_id: intermediateId,
+        relationship_type: 'DEPENDS_ON',
+        direct: true,
+        origin: 'manifest',
+      })
+    }
+
+    const lastSrcId = nodes[nodes.length - 1].id
+    nodes.push({
+      id: targetNodeId,
+      node_type: 'package' as const,
+      display_name: `${detail.package_name}@${detail.package_version}`,
+      package_name: detail.package_name,
+      package_version: detail.package_version,
+      ecosystem: detail.ecosystem,
+      purl: detail.package_version_id,
+      is_target: true,
+      is_entry_point: false,
+      provenance: {
+        source_filename: 'package-lock.json',
+        content_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        imported_at: Math.floor(Date.now() / 1000) - 3600,
+        classification: 'manifest',
+        origin: 'stored_graph',
+      },
+    })
+    edges.push({
+      id: `edge-${lastSrcId}->${targetNodeId}`,
+      source_id: lastSrcId,
+      target_id: targetNodeId,
+      relationship_type: 'DEPENDS_ON',
+      direct: isDirect,
+      origin: 'manifest',
+    })
+
+    const summaryParts = [nodes[0].display_name, ...nodes.slice(1).map((n) => n.display_name)]
+    const summaryText = `Service: ${summaryParts.join(' → ')}`
+
+    return {
+      project_id: projectId,
+      finding_id: detail.id,
+      service_id: detail.service_id,
+      service_name: detail.service_name,
+      advisory_id: detail.advisory_id,
+      package_name: detail.package_name,
+      package_version: detail.package_version,
+      package_version_id: detail.package_version_id,
+      paths: [
+        {
+          id: `path-${detail.id}-0`,
+          depth: isDirect ? 1 : 2,
+          is_direct: isDirect,
+          nodes,
+          edges,
+          summary_text: summaryText,
+        },
+      ],
+      total_paths_found: 1,
+      max_depth_applied: params?.max_depth ?? 8,
+      limit_applied: params?.limit ?? 5,
+      is_truncated: false,
+      has_path: true,
+      evaluated_at: Math.floor(Date.now() / 1000),
+    }
+  }
+
+  const queryParams = new URLSearchParams()
+  if (params?.max_depth !== undefined) queryParams.set('max_depth', String(params.max_depth))
+  if (params?.limit !== undefined) queryParams.set('limit', String(params.limit))
+  const queryString = queryParams.toString()
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings/${encodeURIComponent(findingId)}/paths${queryString ? `?${queryString}` : ''}`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as FindingPathsResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch finding dependency paths.', { status: response.status })
+}
 
 async function handleErrorResponse(response: Response): Promise<never> {
+  if (response.status === 401) {
+    notifyUnauthorized()
+  }
   const err = await parseApiError(response, 'An unexpected error occurred.')
   throw new ProjectApiError(err.message, {
     status: response.status,

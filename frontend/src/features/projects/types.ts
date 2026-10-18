@@ -263,3 +263,133 @@ export interface VulnerabilityFinding {
   fingerprint: string
 }
 
+// US-201: Findings List Types
+export type FindingPriority = 'Highest' | 'High' | 'Medium' | 'Low' | 'unknown' | string
+export type FindingTriageStatus =
+  | 'open'
+  | 'under_investigation'
+  | 'affected'
+  | 'not_affected'
+  | 'fixed'
+  | string
+export type FindingPathStatus = 'path_found' | 'no_path_found' | 'unavailable'
+
+export interface FindingItem {
+  id: string
+  project_id: string
+  service_id: string
+  service_name: string
+  advisory_id: string
+  advisory_summary: string
+  source_url?: string
+  package_name: string
+  ecosystem: string
+  package_version: string
+  package_version_id: string
+  priority: FindingPriority
+  status: FindingTriageStatus
+  path_depth: number | null
+  path_status: FindingPathStatus
+  match_reason?: string
+  reason_code?: string
+  matched_range?: string | null
+  fixed_version?: string | null
+  severity?: string
+  retrieved_at?: number | null
+}
+
+export interface FindingListResponse {
+  items: FindingItem[]
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+}
+
+export interface ProjectService {
+  id: string
+  name: string
+}
+
+export interface FindingFilters {
+  page?: number
+  page_size?: number
+  priority?: string
+  service_id?: string
+  status?: string
+  search?: string
+}
+
+export interface FindingSummaryResponse {
+  project_id: string
+  advisory_matches: number
+  findings_with_path: number
+  findings_without_path: number
+  findings_needing_decision: number
+}
+
+export interface FindingDetail extends FindingItem {
+  advisory_details: string
+  aliases: string[]
+}
+
+// US-204: Dependency Path Types
+export interface NodeProvenance {
+  source_filename: string | null
+  content_hash: string | null
+  imported_at: number | null
+  classification: string
+  origin: string
+}
+
+export interface PathNode {
+  id: string
+  node_type: 'service' | 'package'
+  display_name: string
+  package_name?: string | null
+  package_version?: string | null
+  ecosystem?: string | null
+  purl?: string | null
+  is_target: boolean
+  is_entry_point: boolean
+  provenance: NodeProvenance
+}
+
+export interface PathEdge {
+  id: string
+  source_id: string
+  target_id: string
+  relationship_type: string
+  direct: boolean
+  origin: string
+}
+
+export interface DependencyPath {
+  id: string
+  depth: number
+  is_direct: boolean
+  nodes: PathNode[]
+  edges: PathEdge[]
+  summary_text: string
+}
+
+export interface FindingPathsResponse {
+  project_id: string
+  finding_id: string
+  service_id: string
+  service_name: string
+  advisory_id: string
+  package_name: string
+  package_version: string
+  package_version_id: string
+  paths: DependencyPath[]
+  total_paths_found: number
+  max_depth_applied: number
+  limit_applied: number
+  is_truncated: boolean
+  has_path: boolean
+  evaluated_at: number
+}
+
+
+
