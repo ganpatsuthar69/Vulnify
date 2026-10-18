@@ -179,6 +179,177 @@ class AgentOrchestrator:
             message=f"Run '{run_id}' cancellation signal recorded.",
         )
 
+    def _is_greeting_or_intro(self, query: str) -> bool:
+        """Detect conversational greetings, capability inquiries, or pleasantries."""
+        q = query.lower().strip().rstrip("!?.,")
+        if not q:
+            return True
+
+        greeting_tokens = {
+            "hi", "hello", "hey", "hola", "greetings", "howdy", "yo", "sup",
+            "good morning", "good afternoon", "good evening", "good day",
+            "hi there", "hello there", "hey there", "welcome",
+        }
+        if q in greeting_tokens:
+            return True
+
+        intro_phrases = (
+            "who are you",
+            "what are you",
+            "what can you do",
+            "how can you help",
+            "how do you work",
+            "introduce yourself",
+            "tell me about yourself",
+            "what is vulnify",
+            "what do you do",
+            "help",
+        )
+        if any(q == p or q.startswith(p + " ") or q.startswith(p + "?") for p in intro_phrases):
+            return True
+
+        # Short query of 1-3 words starting with a greeting (e.g. "hi vulnify", "hello assistant")
+        words = q.split()
+        if len(words) <= 3 and words[0] in {"hi", "hello", "hey", "greetings", "howdy"}:
+            security_keywords = {"cve", "ghsa", "find-", "finding", "vulnerab", "package", "dependency", "service", "fix", "upgrade", "path", "exploit", "falkordb"}
+            if not any(k in q for k in security_keywords):
+                return True
+
+        return False
+
+    def _is_conceptual_query(self, query: str) -> bool:
+        """Detect conceptual, architectural, or methodology inquiries about Vulnify."""
+        q = query.lower().strip().rstrip("!?.,")
+        # Exposure vs exploitability concept
+        if "exposure" in q and "exploitab" in q and any(w in q for w in ("difference", "why", "what", "versus", "vs", "mean")):
+            return True
+        # FalkorDB graph modeling concept
+        if "model" in q and "exposure" in q and ("falkordb" in q or "graph" in q):
+            return True
+        if "falkordb" in q and any(w in q for w in ("how", "model", "schema", "concept", "structure")) and not any(k in q for k in ("find-", "cve-", "ghsa-", "pkg-", "service-")):
+            return True
+        return False
+
+    async def _generate_greeting_answer(self, query: str, project_id: str) -> str:
+        """Generate conversational greeting using configured LLM (Mistral AI) or deterministic fallback."""
+        try:
+            from vulnify.benchmarks.llm import BaseLLMClient, LLMConfig, LLMMessage
+            llm = BaseLLMClient(
+                LLMConfig(
+                    provider=self.settings.AGENT_LLM_PROVIDER,
+                    model=self.settings.AGENT_LLM_MODEL,
+                    base_url=self.settings.MISTRAL_API_BASE_URL,
+                    temperature=0.3,
+                    max_tokens=350,
+                    timeout_seconds=10.0,
+                )
+            )
+            if llm.effective_provider in ("mistral", "openai", "gemini"):
+                system_prompt = (
+                    f"You are Vulnify's Graph-Powered Security Investigation Agent. The user is currently in project scope '{project_id}'. "
+                    "Vulnify models service architectures and dependencies in FalkorDB, traces architectural exposure paths, and ranks vulnerabilities deterministically. "
+                    "Always adhere to the Non-Exploitability Policy: describe architectural exposure, never claim exploitability. "
+                    "Respond warmly, professionally, and concisely to the user's greeting or question. "
+                    "Introduce yourself, briefly outline your capabilities, and provide 3 concrete example inquiries they can ask about their project."
+                )
+                res = await asyncio.wait_for(
+                    llm.complete([
+                        LLMMessage(role="system", content=system_prompt),
+                        LLMMessage(role="user", content=query),
+                    ]),
+                    timeout=8.0,
+                )
+                if res.content and res.content.strip():
+                    return res.content.strip()
+        except Exception as exc:
+            logger.info("LLM greeting generation fallback: %s", exc)
+
+        return (
+            f"Hello! I am **Vulnify's Graph-Powered Security Investigation Agent**.\n\n"
+            f"I help you investigate vulnerability reachability and exposure across your services and dependencies "
+            f"using our connected **FalkorDB** knowledge graph for project `{project_id}`.\n\n"
+            "Here are a few things you can ask me to do:\n"
+            "- **Trace Exposure Chains:** *\"Show dependency exposure paths for [package or finding]\"*\n"
+            "- **Deterministic Priority Ranking:** *\"Which findings are highest priority and why?\"*\n"
+            "- **Candidate Fixes & Upgrades:** *\"Which findings currently have known candidate fixes?\"*\n"
+            "- **Architecture & Concepts:** *\"What is the difference between architectural exposure and exploitability?\"*\n\n"
+            "*Notice: Vulnify analyzes architectural exposure based on static dependency graphs and service manifests, "
+            "not proof of runtime exploitability. Absence of a path does not guarantee safety.*\n\n"
+            "How can I help investigate your project today?"
+        )
+
+    async def _generate_conceptual_answer(self, query: str, project_id: str) -> str:
+        """Generate conceptual educational response using LLM (Mistral AI) or authoritative fallback."""
+        try:
+            from vulnify.benchmarks.llm import BaseLLMClient, LLMConfig, LLMMessage
+            llm = BaseLLMClient(
+                LLMConfig(
+                    provider=self.settings.AGENT_LLM_PROVIDER,
+                    model=self.settings.AGENT_LLM_MODEL,
+                    base_url=self.settings.MISTRAL_API_BASE_URL,
+                    temperature=0.2,
+                    max_tokens=500,
+                    timeout_seconds=12.0,
+                )
+            )
+            if llm.effective_provider in ("mistral", "openai", "gemini"):
+                system_prompt = (
+                    "You are Vulnify's Security Architecture and Investigation Expert. "
+                    "Adhere strictly to Vulnify's core principles:\n"
+                    "1. Graph Model: Modeled in FalkorDB with nodes (Service, Package, PackageVersion, Advisory) "
+                    "and edges (:DEPENDS_ON, :CALLS, :AFFECTS). Bounded Cypher traversals trace paths from service entrypoints to vulnerable package versions.\n"
+                    "2. Exposure vs Exploitability: Bounded paths prove architectural exposure (structural reachability from services to vulnerable packages), "
+                    "NOT proof of runtime exploitability (which requires live execution conditions, input flows, reachable methods). "
+                    "Vulnify deliberately avoids claiming exploitability to maintain high signal-to-noise and prevent false sense of runtime safety. "
+                    "Absence of a path does not guarantee safety.\n"
+                    "3. Deterministic Ranking: Scores findings based on reachability (direct vs transitive), advisory severity, and service context.\n"
+                    "Answer clearly, educationally, and concisely in Markdown."
+                )
+                res = await asyncio.wait_for(
+                    llm.complete([
+                        LLMMessage(role="system", content=system_prompt),
+                        LLMMessage(role="user", content=query),
+                    ]),
+                    timeout=10.0,
+                )
+                if res.content and res.content.strip():
+                    return res.content.strip()
+        except Exception as exc:
+            logger.info("LLM conceptual answer generation fallback: %s", exc)
+
+        q_lower = query.lower()
+        if "exposure" in q_lower and "exploitab" in q_lower:
+            return (
+                "### Architectural Exposure vs. Runtime Exploitability\n\n"
+                "In Vulnify, there is a fundamental distinction between **architectural exposure** and **exploitability**:\n\n"
+                "1. **Architectural Exposure (What Vulnify Proves):**\n"
+                "   - Vulnify connects your service manifests, dependency lockfiles, and OSV security advisories into **FalkorDB**.\n"
+                "   - Through parameterized Cypher graph traversals, Vulnify proves whether an architectural path exists from an entrypoint service to a vulnerable package version (direct dependency, transitive dependency hops, or service-to-service calls).\n"
+                "   - This reveals whether vulnerable code is physically present in your dependency graph and reach chain.\n\n"
+                "2. **Runtime Exploitability (What Vulnify Intentionally Avoids Claiming):**\n"
+                "   - Proof of runtime exploitability requires verifying that specific vulnerable methods or endpoints are actively executed under attacker-controlled inputs in production.\n"
+                "   - Claiming 'exploitability' from static analysis produces high false positives or false negatives.\n\n"
+                "*Safety Notice: Absence of an exposure path in the current graph is not a guarantee of absolute safety, "
+                "as dynamic runtime loading or unmapped interfaces may exist.*"
+            )
+        else:
+            return (
+                "### How Vulnify Models Exposure Paths in FalkorDB\n\n"
+                "Vulnify represents application architectures as an interconnected property graph inside **FalkorDB**:\n\n"
+                "1. **Graph Nodes:**\n"
+                "   - `Service`: Declares microservices or application entrypoints.\n"
+                "   - `Package`: Software libraries imported across the ecosystem.\n"
+                "   - `PackageVersion`: Concrete pinned package versions with ecosystem tags.\n"
+                "   - `Advisory`: Security advisories synchronized from OSV (Open Source Vulnerabilities) with severity and matched ranges.\n\n"
+                "2. **Graph Relationships:**\n"
+                "   - `(:Service)-[:DEPENDS_ON]->(:PackageVersion)`: Direct manifests.\n"
+                "   - `(:PackageVersion)-[:DEPENDS_ON]->(:PackageVersion)`: Transitive dependency chains.\n"
+                "   - `(:Service)-[:CALLS]->(:Service)`: Service-to-service call topology.\n"
+                "   - `(:Advisory)-[:AFFECTS]->(:PackageVersion)`: Vulnerability mapping.\n\n"
+                "3. **Bounded Traversal & Querying:**\n"
+                "   - Bounded Cypher queries (e.g. `*1..8` depth) trace the shortest exposure paths from any entrypoint service to affected package versions without unbounded loops."
+            )
+
     async def stream_investigation(
         self,
         project_id: str,
@@ -344,137 +515,147 @@ class AgentOrchestrator:
 
             yield_queue: list[str] = []
 
-            # Determine investigation strategy from prompt
-            wants_paths = any(w in query_lower for w in ("path", "reach", "exposure", "chain", "how", "direct", "transitive"))
-            wants_ranking = any(w in query_lower for w in ("rank", "priorit", "highest", "critical", "top", "score"))
-            wants_remediation = any(w in query_lower for w in ("fix", "upgrade", "remediat", "patch", "candidate"))
-            wants_explanation = any(w in query_lower for w in ("explain", "why", "detail", "advisory", "evidence"))
+            # Check if this is a conversational greeting or general introduction
+            if self._is_greeting_or_intro(cleaned_query):
+                yield make_event("assistant_status", {"status_text": "Responding to inquiry..."})
+                answer_text = await self._generate_greeting_answer(cleaned_query, project_id)
+                path_result = None
+            elif self._is_conceptual_query(cleaned_query):
+                yield make_event("assistant_status", {"status_text": "Consulting Vulnify architectural knowledge base..."})
+                answer_text = await self._generate_conceptual_answer(cleaned_query, project_id)
+                path_result = None
+            else:
+                # Determine investigation strategy from prompt
+                wants_paths = any(w in query_lower for w in ("path", "reach", "exposure", "chain", "how", "direct", "transitive"))
+                wants_ranking = any(w in query_lower for w in ("rank", "priorit", "highest", "critical", "top", "score"))
+                wants_remediation = any(w in query_lower for w in ("fix", "upgrade", "remediat", "patch", "candidate"))
+                wants_explanation = any(w in query_lower for w in ("explain", "why", "detail", "advisory", "evidence"))
 
-            # Step 1: Always retrieve current project findings to ground context
-            step1_resp = await execute_tool_step(
-                "list_findings",
-                {"project_id": project_id, "page": 1, "page_size": 25},
-                "Querying project findings list",
-            )
-            for ev in yield_queue:
-                yield ev
-            yield_queue.clear()
-
-            # Check early termination conditions
-            if run.cancel_event.is_set():
-                run.status = "cancelled"
-                self._persist_run(run)
-                yield make_event("run_cancelled", {"reason": "Run cancelled by user.", "step_count": run.step_count})
-                return
-
-            if time.perf_counter() - start_time > timeout_seconds:
-                run.status = "timeout"
-                self._persist_run(run)
-                yield make_event("run_timeout", {"timeout_seconds": timeout_seconds, "message": "Run timed out."})
-                return
-
-            findings_data = step1_resp.data if step1_resp and step1_resp.status == "success" else None
-            findings_items = findings_data.items if findings_data else []
-
-            # Step 2: Ranking analysis if requested
-            ranked_result = None
-            if wants_ranking and not run.cancel_event.is_set() and run.step_count < step_limit:
-                step2_resp = await execute_tool_step(
-                    "rank_findings",
-                    {"project_id": project_id, "limit": 20},
-                    "Ranking findings with deterministic priority policy (v1.0.0)",
+                # Step 1: Always retrieve current project findings to ground context
+                step1_resp = await execute_tool_step(
+                    "list_findings",
+                    {"project_id": project_id, "page": 1, "page_size": 25},
+                    "Querying project findings list",
                 )
                 for ev in yield_queue:
                     yield ev
                 yield_queue.clear()
-                if step2_resp and step2_resp.status == "success":
-                    ranked_result = step2_resp.data
 
-            # Step 3: Targeted finding details & paths if relevant
-            target_finding = None
-            path_result = None
-            explanation_result = None
+                # Check early termination conditions
+                if run.cancel_event.is_set():
+                    run.status = "cancelled"
+                    self._persist_run(run)
+                    yield make_event("run_cancelled", {"reason": "Run cancelled by user.", "step_count": run.step_count})
+                    return
 
-            # Look for specific package mention or target top finding
-            for f in findings_items:
-                if f.package_name.lower() in query_lower or f.advisory_id.lower() in query_lower:
-                    target_finding = f
-                    break
-            if not target_finding and findings_items:
-                target_finding = findings_items[0]
+                if time.perf_counter() - start_time > timeout_seconds:
+                    run.status = "timeout"
+                    self._persist_run(run)
+                    yield make_event("run_timeout", {"timeout_seconds": timeout_seconds, "message": "Run timed out."})
+                    return
 
-            if target_finding:
-                run.findings_referenced.add(target_finding.id)
-                self._persist_run(run)
+                findings_data = step1_resp.data if step1_resp and step1_resp.status == "success" else None
+                findings_items = findings_data.items if findings_data else []
 
-                if (wants_paths or wants_explanation) and not run.cancel_event.is_set() and run.step_count < step_limit:
-                    # Fetch paths
-                    path_resp = await execute_tool_step(
-                        "get_dependency_paths",
-                        {"project_id": project_id, "finding_id": target_finding.id, "max_depth": 8, "limit": 3},
-                        f"Traversing graph paths to {target_finding.package_name}@{target_finding.package_version}",
+                # Step 2: Ranking analysis if requested
+                ranked_result = None
+                if wants_ranking and not run.cancel_event.is_set() and run.step_count < step_limit:
+                    step2_resp = await execute_tool_step(
+                        "rank_findings",
+                        {"project_id": project_id, "limit": 20},
+                        "Ranking findings with deterministic priority policy (v1.0.0)",
                     )
                     for ev in yield_queue:
                         yield ev
                     yield_queue.clear()
-                    if path_resp and path_resp.status == "success":
-                        path_result = path_resp.data
+                    if step2_resp and step2_resp.status == "success":
+                        ranked_result = step2_resp.data
 
-                    # Fetch explanation
-                    if not run.cancel_event.is_set() and run.step_count < step_limit:
-                        exp_resp = await execute_tool_step(
-                            "explain_finding",
-                            {"project_id": project_id, "finding_id": target_finding.id},
-                            f"Synthesizing exposure explanation for {target_finding.advisory_id}",
+                # Step 3: Targeted finding details & paths if relevant
+                target_finding = None
+                path_result = None
+                explanation_result = None
+
+                # Look for specific package mention or target top finding
+                for f in findings_items:
+                    if f.package_name.lower() in query_lower or f.advisory_id.lower() in query_lower:
+                        target_finding = f
+                        break
+                if not target_finding and findings_items:
+                    target_finding = findings_items[0]
+
+                if target_finding:
+                    run.findings_referenced.add(target_finding.id)
+                    self._persist_run(run)
+
+                    if (wants_paths or wants_explanation) and not run.cancel_event.is_set() and run.step_count < step_limit:
+                        # Fetch paths
+                        path_resp = await execute_tool_step(
+                            "get_dependency_paths",
+                            {"project_id": project_id, "finding_id": target_finding.id, "max_depth": 8, "limit": 3},
+                            f"Traversing graph paths to {target_finding.package_name}@{target_finding.package_version}",
                         )
                         for ev in yield_queue:
                             yield ev
                         yield_queue.clear()
-                        if exp_resp and exp_resp.status == "success":
-                            explanation_result = exp_resp.data
+                        if path_resp and path_resp.status == "success":
+                            path_result = path_resp.data
 
-            # Final check before answer generation
-            if run.cancel_event.is_set():
-                run.status = "cancelled"
-                self._persist_run(run)
-                yield make_event("run_cancelled", {"reason": "Run cancelled by user.", "step_count": run.step_count})
-                return
+                        # Fetch explanation
+                        if not run.cancel_event.is_set() and run.step_count < step_limit:
+                            exp_resp = await execute_tool_step(
+                                "explain_finding",
+                                {"project_id": project_id, "finding_id": target_finding.id},
+                                f"Synthesizing exposure explanation for {target_finding.advisory_id}",
+                            )
+                            for ev in yield_queue:
+                                yield ev
+                            yield_queue.clear()
+                            if exp_resp and exp_resp.status == "success":
+                                explanation_result = exp_resp.data
 
-            if time.perf_counter() - start_time > timeout_seconds:
-                run.status = "timeout"
-                self._persist_run(run)
-                yield make_event("run_timeout", {"timeout_seconds": timeout_seconds, "message": "Run timed out."})
-                return
+                # Final check before answer generation
+                if run.cancel_event.is_set():
+                    run.status = "cancelled"
+                    self._persist_run(run)
+                    yield make_event("run_cancelled", {"reason": "Run cancelled by user.", "step_count": run.step_count})
+                    return
 
-            if run.step_count >= step_limit and wants_ranking and wants_paths:
-                # Step limit reached
-                run.status = "step_limit_reached"
-                self._persist_run(run)
-                yield make_event(
-                    "run_step_limit",
-                    {
-                        "step_limit": step_limit,
-                        "message": f"Execution halted after reaching maximum step budget of {step_limit} steps.",
-                    },
+                if time.perf_counter() - start_time > timeout_seconds:
+                    run.status = "timeout"
+                    self._persist_run(run)
+                    yield make_event("run_timeout", {"timeout_seconds": timeout_seconds, "message": "Run timed out."})
+                    return
+
+                if run.step_count >= step_limit and wants_ranking and wants_paths:
+                    # Step limit reached
+                    run.status = "step_limit_reached"
+                    self._persist_run(run)
+                    yield make_event(
+                        "run_step_limit",
+                        {
+                            "step_limit": step_limit,
+                            "message": f"Execution halted after reaching maximum step budget of {step_limit} steps.",
+                        },
+                    )
+                    return
+
+                # 4. Synthesize Evidence-Backed Answer
+                yield make_event("assistant_status", {"status_text": "Generating evidence-grounded response..."})
+
+                answer_text = self._build_grounded_answer(
+                    query=cleaned_query,
+                    project_id=project_id,
+                    findings=findings_items,
+                    ranked_result=ranked_result,
+                    target_finding=target_finding,
+                    path_result=path_result,
+                    explanation_result=explanation_result,
+                    wants_paths=wants_paths,
+                    wants_ranking=wants_ranking,
+                    wants_remediation=wants_remediation,
+                    wants_explanation=wants_explanation,
                 )
-                return
-
-            # 4. Synthesize Evidence-Backed Answer
-            yield make_event("assistant_status", {"status_text": "Generating evidence-grounded response..."})
-
-            answer_text = self._build_grounded_answer(
-                query=cleaned_query,
-                project_id=project_id,
-                findings=findings_items,
-                ranked_result=ranked_result,
-                target_finding=target_finding,
-                path_result=path_result,
-                explanation_result=explanation_result,
-                wants_paths=wants_paths,
-                wants_ranking=wants_ranking,
-                wants_remediation=wants_remediation,
-                wants_explanation=wants_explanation,
-            )
 
             # Stream answer incrementally in natural chunks
             words = answer_text.split(" ")
@@ -566,6 +747,15 @@ class AgentOrchestrator:
     ) -> str:
         """Synthesize honest, evidence-grounded answer based strictly on real tool outputs."""
         if not findings:
+            if wants_remediation:
+                return (
+                    f"I investigated project `{project_id}` using `list_findings`. Currently, there are no vulnerability findings "
+                    "or imported service manifests in this project scope.\n\n"
+                    "To analyze candidate fixes and upgrade paths:\n"
+                    "1. Navigate to **Inventory → Import Data** to upload your service manifests (e.g., `package.json`, `pom.xml`, `requirements.txt`).\n"
+                    "2. Vulnify will synchronize relevant OSV security advisories and construct the dependency graph in FalkorDB.\n"
+                    "3. Once imported, ask me again and I will identify available upgrade candidates and simulate fixes!"
+                )
             return (
                 f"I investigated project `{project_id}` using `list_findings`, but no vulnerability findings "
                 "were found matching the current project scope. "

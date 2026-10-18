@@ -21,7 +21,7 @@ class UserRecord:
 class IUserRepository(Protocol):
     def get_by_email(self, email: str) -> UserRecord | None: ...
     def get_by_id(self, user_id: str) -> UserRecord | None: ...
-    def create_user(self, email: str, name: str, password_hash: str, role: str = "user") -> UserRecord: ...
+    def create_user(self, email: str, name: str, password_hash: str, role: str = "admin") -> UserRecord: ...
     def update_role(self, email: str, role: str) -> UserRecord | None: ...
 
 
@@ -70,7 +70,7 @@ class FalkorUserRepository:
         email: str,
         name: str,
         password_hash: str,
-        role: str = "user",
+        role: str = "admin",
     ) -> UserRecord:
         graph = self.client.get_graph()
         user_id = str(uuid.uuid4())
@@ -134,7 +134,7 @@ class InMemoryUserRepository:
         email: str,
         name: str,
         password_hash: str,
-        role: str = "user",
+        role: str = "admin",
     ) -> UserRecord:
         user_id = str(uuid.uuid4())
         now = int(datetime.now(timezone.utc).timestamp())

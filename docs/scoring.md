@@ -171,8 +171,26 @@ Every finding evaluated by the scoring engine MUST include a list of human-reada
 | `FIX_VERSION_UNKNOWN` | `Remediation target unknown (no published fixed version in upstream advisory)` | Remediation (Missing) |
 | `TRIAGE_STATUS_RESOLVED` | `Finding resolved or dismissed via triage status '{status}'` | Triage |
 | `TRIAGE_UNDER_INVESTIGATION` | `Finding currently under active security investigation` | Triage |
+| `TRIAGE_NEEDS_REVIEW` | `Prior triage decision requires review: {reason}` | Triage / Change Detection (US-402) |
 | `MATCH_STATUS_NOT_AFFECTED` | `Version evaluation confirmed package is not affected by advisory constraints` | Version Match |
 | `KNOWN_EXPLOITED_ACTIVE` | `Known active exploitation reported in public threat intelligence` | Threat Intelligence |
+
+---
+
+## 5.1 Change Detection & Triage Review Lifecycle (US-402)
+
+Under US-402 ("settled findings stay quiet unless the advisory, the version or the path changes; then it is flagged 'needs review' with the reason"):
+1. When a finding is recorded as `not_affected`, an immutable snapshot of authoritative evidence (advisory severity, range, fixed version, modified date; package version identity; dependency path depth and status) is captured as a deterministic SHA-256 baseline fingerprint.
+2. Settled findings stay quiet and are suppressed to `Low` priority under Rule 1 as long as the current evidence matches the recorded baseline.
+3. If any of the 3 canonical dimensions changes:
+   - The finding is marked `review_required = true` with a detailed human-readable `review_reason` and `change_category`.
+   - Rule 1 priority suppression is bypassed: the finding is scored according to its true current risk (Highest, High, Medium) based on actual severity, exposure, and remediation signals.
+   - Code `TRIAGE_NEEDS_REVIEW` is appended to `reason_codes`.
+   - The finding is included in summary metrics (`findings_needing_decision`).
+4. When an administrator reviews and confirms or updates the decision:
+   - The `review_required` flag is cleared.
+   - The baseline snapshot is advanced to the current authoritative evidence.
+   - Historical decision value, original triaged timestamp, and triage actor are preserved for auditability.
 
 ---
 

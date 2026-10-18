@@ -46,6 +46,8 @@ class RankedFindingItem(BaseModel):
     path_status: str
     fixed_version: str | None = None
     status: str
+    review_required: bool = False
+    review_reason: str | None = None
 
 
 class PriorityBandDistribution(BaseModel):
@@ -117,6 +119,8 @@ async def handle_rank_findings(inputs: RankFindingsInput) -> RankFindingsResult:
                 path_status=item.get("path_status", "no_path_found"),
                 fixed_version=item.get("fixed_version"),
                 status=item.get("status", "open"),
+                review_required=bool(item.get("review_required", False)),
+                review_reason=item.get("review_reason"),
             )
         )
 

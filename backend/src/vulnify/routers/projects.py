@@ -37,6 +37,8 @@ from vulnify.schemas import (
     FindingSummaryResponse,
     FindingDetailResponse,
     FindingPathsResponse,
+    ProjectExposurePathsResponse,
+    ArchitecturalExposureItem,
     DataQualityWarning,
     ProjectDataQualityResponse,
     ImportSummaryResponse,
@@ -65,6 +67,14 @@ from vulnify.schemas import (
     GitHubIssueCreateRequest,
     GitHubIssueRecordResponse,
     GitHubIssueListResponse,
+    TriageDecisionRequest,
+    ReviewDecisionRequest,
+    TriageDecisionResponse,
+    ChangeComparisonResponse,
+)
+from vulnify.services.decision_service import (
+    DecisionService,
+    get_decision_service,
 )
 from vulnify.services.data_quality import (
     DataQualityService,
@@ -616,10 +626,16 @@ async def match_project_vulnerabilities(
     """
     user_identity = getattr(current_user, "email", None) or str(current_user.id)
     try:
-        return matching_service.match_project_vulnerabilities(
+        match_result = matching_service.match_project_vulnerabilities(
             project.id,
             initiated_by=user_identity,
         )
+        try:
+            decision_service = get_decision_service()
+            decision_service.detect_changes_for_project(project.id)
+        except Exception:
+            pass  # Do not block matching if change detection fails
+        return match_result
     except HTTPException:
         raise
     except Exception as exc:
@@ -834,6 +850,151 @@ async def get_project_finding_detail(
         ) from exc
 
 
+@router.post(
+    "/{project_id}/findings/{finding_id}/decision",
+    response_model=TriageDecisionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Record or update human triage decision with baseline evidence capture (US-402)",
+)
+async def record_finding_decision(
+    project_id: str,
+    finding_id: str,
+    request: TriageDecisionRequest,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    decision_service: DecisionService = Depends(get_decision_service),
+) -> TriageDecisionResponse:
+    """Record a triage decision ('not_affected', 'fixed', 'affected', etc.) for a finding.
+    
+    Captures baseline evidence snapshot and stores audit metadata. If 'not_affected' is chosen,
+    a justification (>= 10 characters) is required.
+    """
+    user_identity = getattr(current_user, "email", None) or str(current_user.id)
+    try:
+        record = decision_service.record_decision(
+            project_id=project.id,
+            finding_id=finding_id,
+            status=request.status,
+            triaged_by=user_identity,
+            justification=request.justification,
+        )
+        return TriageDecisionResponse(**record.model_dump())
+    except HTTPException:
+        raise
+    except ValueError as val_err:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(val_err),
+        ) from val_err
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to record triage decision: {str(exc)}",
+        ) from exc
+
+
+@router.post(
+    "/{project_id}/findings/{finding_id}/review",
+    response_model=TriageDecisionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Review and acknowledge or update a finding flagged for review (US-402)",
+)
+async def review_finding_decision(
+    project_id: str,
+    finding_id: str,
+    request: ReviewDecisionRequest,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    decision_service: DecisionService = Depends(get_decision_service),
+) -> TriageDecisionResponse:
+    """Review a finding flagged 'needs review'.
+    
+    Clears the review_required flag, records review audit metadata, and advances baseline snapshot.
+    """
+    user_identity = getattr(current_user, "email", None) or str(current_user.id)
+    try:
+        record = decision_service.review_decision(
+            project_id=project.id,
+            finding_id=finding_id,
+            reviewed_by=user_identity,
+            action=request.action,
+            new_status=request.new_status,
+            new_justification=request.new_justification,
+            notes=request.notes,
+        )
+        return TriageDecisionResponse(**record.model_dump())
+    except HTTPException:
+        raise
+    except ValueError as val_err:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(val_err),
+        ) from val_err
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to review decision: {str(exc)}",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/findings/{finding_id}/decision",
+    response_model=ChangeComparisonResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get current decision, baseline snapshot, and evidence comparison (US-402)",
+)
+async def get_finding_decision(
+    project_id: str,
+    finding_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    decision_service: DecisionService = Depends(get_decision_service),
+) -> ChangeComparisonResponse:
+    """Inspect the baseline snapshot and compare current evidence to detect changes for a finding."""
+    try:
+        comparison = decision_service.detect_changes_for_finding(
+            project_id=project.id,
+            finding_id=finding_id,
+        )
+        return ChangeComparisonResponse(**comparison.model_dump())
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get finding decision: {str(exc)}",
+        ) from exc
+
+
+@router.post(
+    "/{project_id}/decisions/detect-changes",
+    summary="Detect changes across all project findings with prior decisions (US-402)",
+)
+async def detect_project_decision_changes(
+    project_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    decision_service: DecisionService = Depends(get_decision_service),
+) -> dict[str, Any]:
+    """Evaluate change detection across all settled findings in the project."""
+    try:
+        results = decision_service.detect_changes_for_project(project.id)
+        flagged_count = sum(1 for r in results if r.review_required)
+        return {
+            "project_id": project.id,
+            "evaluated_count": len(results),
+            "flagged_count": flagged_count,
+            "results": [r.model_dump() for r in results],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to detect project decision changes: {str(exc)}",
+        ) from exc
+
+
 @router.get(
     "/{project_id}/findings/{finding_id}/paths",
     response_model=FindingPathsResponse,
@@ -888,6 +1049,8 @@ async def get_project_finding_paths(
             )
 
         warnings = dq_service.evaluate_finding_warnings(project.id, finding)
+        exp_items, _, _, _ = repo.get_project_exposure_paths(project.id, finding_id=finding["id"], limit=1)
+        exposure_path = exp_items[0] if exp_items else None
 
         return FindingPathsResponse(
             project_id=project.id,
@@ -907,6 +1070,7 @@ async def get_project_finding_paths(
             evaluated_at=now,
             no_path_message=no_path_message,
             warnings=warnings,
+            exposure_path=exposure_path,
         )
     except HTTPException:
         raise
@@ -914,6 +1078,102 @@ async def get_project_finding_paths(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve dependency paths from database.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/exposure-paths",
+    response_model=ProjectExposurePathsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get architectural exposure paths through service and dependency topology (US-205)",
+)
+async def get_project_exposure_paths(
+    project_id: str,
+    finding_id: str | None = Query(default=None, description="Optional finding filter"),
+    service_id: str | None = Query(default=None, description="Optional service filter"),
+    limit: int = Query(default=20, ge=1, le=50, description="Maximum number of exposure paths to return"),
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+    dq_service: DataQualityService = Depends(get_data_quality_service),
+) -> ProjectExposurePathsResponse:
+    """Traverse service-to-service calls and package dependencies to analyze end-to-end architectural exposure (US-205)."""
+    try:
+        items, unsupported_ecosystems, topo_status, has_internet = repo.get_project_exposure_paths(
+            project_id=project.id,
+            finding_id=finding_id,
+            service_id=service_id,
+            limit=limit,
+        )
+        now = int(datetime.now(timezone.utc).timestamp())
+        warnings = dq_service.evaluate_project_warnings(project.id)
+
+        return ProjectExposurePathsResponse(
+            project_id=project.id,
+            topology_status=topo_status,
+            has_internet_exposure=has_internet,
+            total_exposure_paths=len(items),
+            items=items,
+            unsupported_ecosystems=unsupported_ecosystems,
+            warnings=warnings,
+            evaluated_at=now,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve exposure paths from database.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/findings/{finding_id}/exposure-paths",
+    response_model=ProjectExposurePathsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get architectural exposure path for a specific finding (US-205)",
+)
+async def get_single_finding_exposure_paths(
+    project_id: str,
+    finding_id: str,
+    limit: int = Query(default=5, ge=1, le=20, description="Maximum number of exposure paths to return"),
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+    dq_service: DataQualityService = Depends(get_data_quality_service),
+) -> ProjectExposurePathsResponse:
+    """Retrieve end-to-end architectural exposure path for a single finding (US-205)."""
+    try:
+        finding = repo.get_project_finding_detail(project.id, finding_id)
+        if not finding:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Finding '{finding_id}' not found in project '{project.id}'.",
+            )
+        items, unsupported_ecosystems, topo_status, has_internet = repo.get_project_exposure_paths(
+            project_id=project.id,
+            finding_id=finding["id"],
+            limit=limit,
+        )
+        now = int(datetime.now(timezone.utc).timestamp())
+        warnings = dq_service.evaluate_finding_warnings(project.id, finding)
+
+        return ProjectExposurePathsResponse(
+            project_id=project.id,
+            topology_status=topo_status,
+            has_internet_exposure=has_internet,
+            total_exposure_paths=len(items),
+            items=items,
+            unsupported_ecosystems=unsupported_ecosystems,
+            warnings=warnings,
+            evaluated_at=now,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve exposure paths from database.",
         ) from exc
 
 

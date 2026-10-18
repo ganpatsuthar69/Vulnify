@@ -43,6 +43,8 @@ class FindingSummaryItem(BaseModel):
     status: str
     path_depth: int | None = None
     fixed_version: str | None = None
+    review_required: bool = False
+    review_reason: str | None = None
 
 
 class ListFindingsResult(BaseModel):
@@ -86,6 +88,8 @@ async def handle_list_findings(inputs: ListFindingsInput) -> ListFindingsResult:
             status=f.get("status", "open"),
             path_depth=f.get("path_depth"),
             fixed_version=f.get("fixed_version"),
+            review_required=bool(f.get("review_required", False)),
+            review_reason=f.get("review_reason"),
         )
         for f in items_raw
     ]

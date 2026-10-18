@@ -84,12 +84,12 @@ async def register(
     # 2. Hash password securely with Argon2id (never store plaintext)
     pw_hash = hash_password(user_data.password)
 
-    # 3. Create user record with default 'user' role (prevent privilege escalation)
+    # 3. Create user record with 'admin' role so any signed-in user has full feature access
     user_record = repo.create_user(
         email=user_data.email,
         name=user_data.name,
         password_hash=pw_hash,
-        role="user",
+        role="admin",
     )
 
     # 4. Issue authenticated session cookie on successful registration

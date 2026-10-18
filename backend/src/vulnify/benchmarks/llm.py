@@ -53,6 +53,13 @@ class BaseLLMClient:
 
     def __init__(self, config: LLMConfig | None = None) -> None:
         self.config = config or LLMConfig()
+        try:
+            from vulnify.config import get_settings
+            settings = get_settings()
+            if settings and settings.AGENT_LLM_MODEL and (config is None or config.model == "mistral-small-latest"):
+                self.config.model = settings.AGENT_LLM_MODEL
+        except Exception:
+            pass
         self._effective_provider = self._resolve_provider()
 
     def _get_api_key(self, provider: str) -> str | None:

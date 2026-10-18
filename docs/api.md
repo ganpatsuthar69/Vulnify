@@ -1447,6 +1447,106 @@ Retrieves bounded, deterministic shortest dependency paths from the root service
 
 ---
 
+### 18a. `GET /api/projects/{project_id}/exposure-paths` (US-205)
+
+Traverses combined service topology (`CALLS*0..5`) and package dependency paths (`DEPENDS_ON*1..8`) starting from internet-facing services to determine whether affected services and package vulnerabilities are architecturally exposed to external traffic.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/exposure-paths`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### Query Parameters
+- **`limit`** (integer, optional, default: `100`, min: `1`, max: `200`): Maximum exposure paths to return.
+
+#### Semantics & Distinctions
+- **AC1: Unified Path Chain**: Each path starts with `node_type: "internet"`, continues through the entry service (`node_type: "service"`), intermediate service calls (`CALLS`), target service, and package dependency chain (`DEPENDS_ON*1..8`).
+- **AC2: Non-Exploitability Disclaimer**: The screen and API payload always include the mandatory disclaimer: `"Architectural exposure, not proof of exploitability. Paths show architectural reachability through service and dependency topology, not runtime exploit execution. Absence of a path does not guarantee safety. 'No path found' is not a guarantee of safety."`
+- **AC3: Synthetic Edge and Ecosystem Flags**: Synthetic edges (`origin: 'synthetic'`) are flagged with `is_synthetic: true`. Unsupported package ecosystems (outside npm, pypi, cargo, go) are reported in `unsupported_ecosystems` as `not_analyzed`.
+- **Topology Status**: Returns `complete`, `internal_only` (services exist but none are internet-facing), `missing_topology` (no service topology ingested), or `unsupported_ecosystem`.
+
+#### Responses
+- **`200 OK`**:
+  ```json
+  {
+    "project_id": "proj-uuid",
+    "topology_status": "complete",
+    "has_internet_exposure": true,
+    "total_exposure_paths": 1,
+    "items": [
+      {
+        "finding_id": "find-1",
+        "advisory_id": "GHSA-1234",
+        "advisory_summary": "Remote code execution",
+        "severity": "CRITICAL",
+        "priority": "P1",
+        "package_name": "redis-parser",
+        "package_version": "2.0.0",
+        "package_version_id": "npm:redis-parser@2.0.0",
+        "ecosystem": "npm",
+        "target_service_id": "proj-uuid:cart-service",
+        "target_service_name": "cart-service",
+        "is_target_service_internet_facing": false,
+        "exposure_status": "internet_exposed",
+        "has_internet_facing_entry": true,
+        "entry_service_id": "proj-uuid:gateway",
+        "entry_service_name": "gateway",
+        "is_entry_service_internet_facing": true,
+        "service_hop_count": 1,
+        "package_hop_count": 1,
+        "total_depth": 3,
+        "has_synthetic_edges": true,
+        "paths": [
+          {
+            "id": "exp-path-1",
+            "entry_service_name": "gateway",
+            "target_service_name": "cart-service",
+            "is_internet_entry": true,
+            "service_hop_count": 1,
+            "package_hop_count": 1,
+            "has_synthetic_edges": true,
+            "nodes": [
+              {"id": "internet", "node_type": "internet", "display_name": "Public Internet Ingress", "is_entry_point": true},
+              {"id": "proj-uuid:gateway", "node_type": "service", "display_name": "gateway", "is_internet_facing": true},
+              {"id": "proj-uuid:cart-service", "node_type": "service", "display_name": "cart-service", "is_internet_facing": false},
+              {"id": "npm:redis-parser@2.0.0", "node_type": "package", "display_name": "redis-parser@2.0.0", "is_target": true}
+            ],
+            "edges": [
+              {"id": "ingress->gateway", "source_id": "internet", "target_id": "proj-uuid:gateway", "relationship_type": "INGRESS", "is_synthetic": false},
+              {"id": "gateway->cart-service", "source_id": "proj-uuid:gateway", "target_id": "proj-uuid:cart-service", "relationship_type": "CALLS", "is_synthetic": true},
+              {"id": "cart-service->redis-parser", "source_id": "proj-uuid:cart-service", "target_id": "npm:redis-parser@2.0.0", "relationship_type": "DEPENDS_ON", "is_synthetic": false}
+            ],
+            "summary_text": "Internet → gateway [synthetic CALLS] → cart-service → redis-parser@2.0.0"
+          }
+        ],
+        "remediation_target": "2.0.1",
+        "non_exploitability_disclaimer": "Architectural exposure, not proof of exploitability. Paths show architectural reachability through service and dependency topology, not runtime exploit execution. Absence of a path does not guarantee safety. 'No path found' is not a guarantee of safety."
+      }
+    ],
+    "unsupported_ecosystems": [],
+    "disclaimer": "Architectural exposure, not proof of exploitability. Paths show architectural reachability through service and dependency topology, not runtime exploit execution. Absence of a path does not guarantee safety. 'No path found' is not a guarantee of safety.",
+    "warnings": [],
+    "evaluated_at": 1729172000
+  }
+  ```
+- **`401 Unauthorized`**: Authentication required (`AUTHENTICATION_REQUIRED`).
+- **`404 Not Found`**: Project not found (`PROJECT_NOT_FOUND`).
+
+---
+
+### 18b. `GET /api/projects/{project_id}/findings/{finding_id}/exposure-paths` (US-205)
+
+Retrieves architectural exposure paths filtered to a specific finding within the project.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/findings/{finding_id}/exposure-paths`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+---
+
 ### 19. `GET /api/projects/{project_id}/data-quality` (US-207)
 
 Evaluates project-wide and finding-level data quality warnings, highlighting incomplete analysis scope and enforcing the honesty constraint that absence of evidence does not guarantee safety.
@@ -1951,6 +2051,121 @@ Lists all GitHub issues created for findings in the specified project.
   ```
 - **`401 Unauthorized`**: Authentication required.
 - **`404 Not Found`**: Project not found.
+
+---
+
+### 29. Decision Management & Change Detection Endpoints (US-401 / US-402)
+
+#### 29a. `POST /api/projects/{project_id}/findings/{finding_id}/decision`
+
+Records or updates human triage decision (`open`, `under_investigation`, `affected`, `not_affected`, `fixed`) with baseline evidence capture and justification validation.
+
+- **Method**: `POST`
+- **Path**: `/api/projects/{project_id}/findings/{finding_id}/decision`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-Requested-With: vulnify`
+- **Request Body**:
+  ```json
+  {
+    "status": "not_affected",
+    "justification": "Verified dependency is isolated in sandbox and cannot receive untrusted input"
+  }
+  ```
+  *(Note: A justification of at least 10 characters is strictly enforced when status is `not_affected`).*
+- **Response**: `200 OK`
+  ```json
+  {
+    "project_id": "proj-uuid",
+    "finding_id": "find-uuid",
+    "advisory_id": "GHSA-29mw-wpgm-hmr9",
+    "package_version_id": "npm:lodash@4.17.20",
+    "status": "not_affected",
+    "justification": "Verified dependency is isolated in sandbox and cannot receive untrusted input",
+    "triaged_by": "admin@vulnify.local",
+    "triaged_at": 1729173000,
+    "review_required": false,
+    "review_reason": null,
+    "change_category": null,
+    "reviewed_at": 1729173000,
+    "reviewed_by": "admin@vulnify.local",
+    "baseline": {
+      "advisory_id": "GHSA-29mw-wpgm-hmr9",
+      "severity": "HIGH",
+      "matched_range": "< 4.17.21",
+      "fixed_version": "4.17.21",
+      "package_name": "lodash",
+      "package_version": "4.17.20",
+      "package_version_id": "npm:lodash@4.17.20",
+      "path_depth": 2,
+      "path_status": "path_found",
+      "fingerprint": "a3f5b7...",
+      "captured_at": 1729173000
+    }
+  }
+  ```
+- **`422 Unprocessable Entity`**: Justification shorter than 10 characters when marking `not_affected`.
+
+#### 29b. `POST /api/projects/{project_id}/findings/{finding_id}/review`
+
+Reviews and acknowledges a decision that was flagged as needing review due to detected evidence changes. Clears the `review_required` flag, records reviewer audit metadata, and advances the baseline snapshot to current authoritative graph facts.
+
+- **Method**: `POST`
+- **Path**: `/api/projects/{project_id}/findings/{finding_id}/review`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-Requested-With: vulnify`
+- **Request Body**:
+  ```json
+  {
+    "action": "confirm",
+    "notes": "Reviewed new advisory severity; decision remains sound."
+  }
+  ```
+- **Response**: `200 OK` (returns updated `TriageDecisionResponse` with `review_required: false` and updated baseline).
+
+#### 29c. `GET /api/projects/{project_id}/findings/{finding_id}/decision`
+
+Retrieves the recorded baseline evidence snapshot and compares current authoritative evidence across the 3 canonical dimensions (advisory, version, dependency path).
+
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/findings/{finding_id}/decision`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+- **Response**: `200 OK`
+  ```json
+  {
+    "finding_id": "find-uuid",
+    "has_changed": true,
+    "review_required": true,
+    "has_baseline": true,
+    "category": "advisory",
+    "reason": "Advisory: severity changed from 'MODERATE' to 'CRITICAL'",
+    "changes": [
+      "Advisory: severity changed from 'MODERATE' to 'CRITICAL'"
+    ],
+    "current_evidence": { ... },
+    "baseline": { ... }
+  }
+  ```
+
+#### 29d. `POST /api/projects/{project_id}/decisions/detect-changes`
+
+Triggers change detection across all settled findings in the project. Evaluates authoritative evidence against stored baselines, flags decisions requiring review, and updates persisted relationships in FalkorDB.
+
+- **Method**: `POST`
+- **Path**: `/api/projects/{project_id}/decisions/detect-changes`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+- **Response**: `200 OK`
+  ```json
+  {
+    "project_id": "proj-uuid",
+    "evaluated_count": 12,
+    "flagged_count": 2,
+    "results": [ ... ]
+  }
+  ```
 
 ---
 

@@ -19,6 +19,7 @@ import type {
   FindingSummaryResponse,
   FindingDetail,
   FindingPathsResponse,
+  ProjectExposurePathsResponse,
   PathNode,
   PathEdge,
   ProjectDataQualityResponse,
@@ -33,6 +34,10 @@ import type {
   GitHubIssueCreateRequest,
   GitHubIssueRecordResponse,
   GitHubIssueListResponse,
+  TriageDecisionRequest,
+  ReviewDecisionRequest,
+  TriageDecisionResponse,
+  ChangeComparisonResponse,
 } from './types'
 import { ApiClientError, isMockMode, parseApiError } from '@/shared/api/client'
 import type { ApiClientErrorOptions } from '@/shared/types/api'
@@ -1213,6 +1218,99 @@ export async function getFindingDependencyPaths(
   throw new ProjectApiError('Failed to fetch finding dependency paths.', { status: response.status })
 }
 
+export async function getProjectExposurePaths(
+  projectId: string,
+  params?: { findingId?: string; serviceId?: string; limit?: number },
+): Promise<ProjectExposurePathsResponse> {
+  if (isMockMode()) {
+    return {
+      project_id: projectId,
+      topology_status: 'complete',
+      has_internet_exposure: true,
+      total_exposure_paths: 0,
+      items: [],
+      unsupported_ecosystems: [],
+      disclaimer:
+        'Architectural exposure, not proof of exploitability. Paths show architectural reachability through service and dependency topology, not runtime exploit execution. Absence of a path does not guarantee safety.',
+      warnings: [],
+      evaluated_at: Math.floor(Date.now() / 1000),
+    }
+  }
+
+  const queryParams = new URLSearchParams()
+  if (params?.findingId) queryParams.set('finding_id', params.findingId)
+  if (params?.serviceId) queryParams.set('service_id', params.serviceId)
+  if (params?.limit !== undefined) queryParams.set('limit', String(params.limit))
+  const queryString = queryParams.toString()
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/exposure-paths${queryString ? `?${queryString}` : ''}`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as ProjectExposurePathsResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch architectural exposure paths.', { status: response.status })
+}
+
+export async function getFindingExposurePaths(
+  projectId: string,
+  findingId: string,
+  params?: { limit?: number },
+): Promise<ProjectExposurePathsResponse> {
+  if (isMockMode()) {
+    return {
+      project_id: projectId,
+      topology_status: 'complete',
+      has_internet_exposure: true,
+      total_exposure_paths: 0,
+      items: [],
+      unsupported_ecosystems: [],
+      disclaimer:
+        'Architectural exposure, not proof of exploitability. Paths show architectural reachability through service and dependency topology, not runtime exploit execution. Absence of a path does not guarantee safety.',
+      warnings: [],
+      evaluated_at: Math.floor(Date.now() / 1000),
+    }
+  }
+
+  const queryParams = new URLSearchParams()
+  if (params?.limit !== undefined) queryParams.set('limit', String(params.limit))
+  const queryString = queryParams.toString()
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings/${encodeURIComponent(findingId)}/exposure-paths${queryString ? `?${queryString}` : ''}`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as ProjectExposurePathsResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch finding exposure paths.', { status: response.status })
+}
+
 export async function getProjectDataQuality(
   projectId: string,
 ): Promise<ProjectDataQualityResponse> {
@@ -1745,8 +1843,175 @@ export async function getProjectGitHubIssues(
   throw new ProjectApiError('Failed to fetch project GitHub issues.', { status: response.status })
 }
 
+export async function recordFindingDecision(
+  projectId: string,
+  findingId: string,
+  data: TriageDecisionRequest,
+): Promise<TriageDecisionResponse> {
+  if (isMockMode()) {
+    return {
+      project_id: projectId,
+      finding_id: findingId,
+      advisory_id: 'GHSA-mock',
+      package_version_id: 'npm:mock@1.0.0',
+      status: data.status,
+      justification: data.justification ?? null,
+      triaged_by: 'current_user',
+      triaged_at: Math.floor(Date.now() / 1000),
+      review_required: false,
+      review_reason: null,
+      change_category: null,
+      reviewed_at: Math.floor(Date.now() / 1000),
+      reviewed_by: 'current_user',
+      baseline: null,
+    }
+  }
 
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings/${encodeURIComponent(findingId)}/decision`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'vulnify',
+      },
+      body: JSON.stringify(data),
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
 
+  if (response.status === 200) {
+    return (await response.json()) as TriageDecisionResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to record triage decision.', { status: response.status })
+}
+
+export async function reviewFindingDecision(
+  projectId: string,
+  findingId: string,
+  data: ReviewDecisionRequest,
+): Promise<TriageDecisionResponse> {
+  if (isMockMode()) {
+    return {
+      project_id: projectId,
+      finding_id: findingId,
+      advisory_id: 'GHSA-mock',
+      package_version_id: 'npm:mock@1.0.0',
+      status: data.new_status ?? 'not_affected',
+      justification: data.new_justification ?? null,
+      triaged_by: 'current_user',
+      triaged_at: Math.floor(Date.now() / 1000) - 3600,
+      review_required: false,
+      review_reason: null,
+      change_category: null,
+      reviewed_at: Math.floor(Date.now() / 1000),
+      reviewed_by: 'current_user',
+      baseline: null,
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings/${encodeURIComponent(findingId)}/review`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'vulnify',
+      },
+      body: JSON.stringify(data),
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as TriageDecisionResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to review decision.', { status: response.status })
+}
+
+export async function getFindingDecision(
+  projectId: string,
+  findingId: string,
+): Promise<ChangeComparisonResponse> {
+  if (isMockMode()) {
+    return {
+      finding_id: findingId,
+      has_changed: false,
+      review_required: false,
+      has_baseline: true,
+      category: null,
+      reason: null,
+      changes: [],
+      current_evidence: {},
+      baseline: null,
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings/${encodeURIComponent(findingId)}/decision`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as ChangeComparisonResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to get finding decision.', { status: response.status })
+}
+
+export async function detectDecisionChanges(
+  projectId: string,
+): Promise<{ project_id: string; evaluated_count: number; flagged_count: number; results: ChangeComparisonResponse[] }> {
+  if (isMockMode()) {
+    return {
+      project_id: projectId,
+      evaluated_count: 0,
+      flagged_count: 0,
+      results: [],
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/decisions/detect-changes`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as { project_id: string; evaluated_count: number; flagged_count: number; results: ChangeComparisonResponse[] }
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to detect decision changes.', { status: response.status })
+}
 
 async function handleErrorResponse(response: Response): Promise<never> {
   if (response.status === 401) {

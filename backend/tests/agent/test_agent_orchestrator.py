@@ -232,3 +232,74 @@ async def test_orchestrator_cancellation_unauthorized(agent_settings, populated_
     cancel_res = await orchestrator.cancel_run(run_id=run_id, user_id="intruder-user")
     assert cancel_res.status == "not_found"
     assert "does not belong" in cancel_res.message
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_conversational_greeting_hi(agent_settings, populated_repos):
+    project, project_repo, vuln_repo, registry = populated_repos
+
+    orchestrator = AgentOrchestrator(
+        settings=agent_settings,
+        registry=registry,
+        project_repo=project_repo,
+    )
+
+    chunks = []
+    async for chunk in orchestrator.stream_investigation(
+        project_id=project.id,
+        message="Hi",
+        user_id="user-123",
+        user_email="admin@vulnify.local",
+    ):
+        chunks.append(chunk)
+
+    events = _parse_sse_events(chunks)
+    event_names = [e["event"] for e in events]
+
+    assert "run_started" in event_names
+    assert "assistant_status" in event_names
+    assert "answer_delta" in event_names
+    assert "answer_completed" in event_names
+    assert "run_completed" in event_names
+
+    # Greeting must NOT trigger unnecessary tool execution steps
+    assert "tool_started" not in event_names
+    assert "tool_completed" not in event_names
+
+    ans_event = next(e for e in events if e["event"] == "answer_completed")
+    full_text = ans_event["data"]["data"]["full_text"]
+    # Check that answer is a relevant introduction/greeting, NOT robotic "no vulnerability findings were found"
+    assert "vulnify" in full_text.lower()
+    assert "no vulnerability findings were found" not in full_text.lower()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_conceptual_inquiry(agent_settings, populated_repos):
+    project, project_repo, vuln_repo, registry = populated_repos
+
+    orchestrator = AgentOrchestrator(
+        settings=agent_settings,
+        registry=registry,
+        project_repo=project_repo,
+    )
+
+    chunks = []
+    async for chunk in orchestrator.stream_investigation(
+        project_id=project.id,
+        message="What is the difference between architectural exposure and exploitability?",
+        user_id="user-123",
+        user_email="admin@vulnify.local",
+    ):
+        chunks.append(chunk)
+
+    events = _parse_sse_events(chunks)
+    event_names = [e["event"] for e in events]
+
+    # Must NOT run database lookup tools for conceptual questions
+    assert "tool_started" not in event_names
+
+    ans_event = next(e for e in events if e["event"] == "answer_completed")
+    full_text = ans_event["data"]["data"]["full_text"]
+    assert "exposure" in full_text.lower()
+    assert "exploitab" in full_text.lower()
+

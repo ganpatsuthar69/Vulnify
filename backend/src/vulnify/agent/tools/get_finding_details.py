@@ -60,6 +60,13 @@ class FindingDetailItem(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     source_url: str = ""
     retrieved_at: int | None = None
+    review_required: bool = False
+    review_reason: str | None = None
+    change_category: str | None = None
+    triaged_by: str | None = None
+    triaged_at: int | None = None
+    triage_justification: str | None = None
+    reviewed_at: int | None = None
 
 
 class GetFindingDetailsResult(BaseModel):
@@ -111,6 +118,9 @@ async def handle_get_finding_details(inputs: GetFindingDetailsInput) -> GetFindi
         label=finding_data.get("advisory_id"),
     )
 
+    review_req = bool(finding_data.get("review_required", False))
+    review_rsn = finding_data.get("review_reason")
+
     item = FindingDetailItem(
         id=finding_data.get("id", inputs.finding_id),
         project_id=inputs.project_id,
@@ -138,15 +148,23 @@ async def handle_get_finding_details(inputs: GetFindingDetailsInput) -> GetFindi
         aliases=finding_data.get("aliases", []),
         source_url=finding_data.get("source_url", ""),
         retrieved_at=finding_data.get("retrieved_at"),
+        review_required=review_req,
+        review_reason=review_rsn,
+        change_category=finding_data.get("change_category"),
+        triaged_by=finding_data.get("triaged_by"),
+        triaged_at=finding_data.get("triaged_at"),
+        triage_justification=finding_data.get("triage_justification"),
+        reviewed_at=finding_data.get("reviewed_at"),
     )
 
+    review_note = f" [NEEDS REVIEW: {review_rsn}]" if review_req and review_rsn else ""
     trace = TraceFragment(
         tool_name="get_finding_details",
         query_id="get_project_finding_detail",
         inputs=inputs.model_dump(),
         result_summary=(
             f"Found details for finding '{item.id}' ({item.advisory_id} on {item.package_name}@{item.package_version}). "
-            f"Priority: {item.priority}, Path Status: {item.path_status}."
+            f"Priority: {item.priority}, Path Status: {item.path_status}, Status: {item.status}{review_note}."
         ),
         duration_ms=duration_ms,
         record_count=1,

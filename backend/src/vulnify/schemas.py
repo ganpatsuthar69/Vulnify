@@ -2,7 +2,7 @@
 
 import re
 from typing import Any, Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
@@ -334,6 +334,13 @@ class FindingItemResponse(BaseModel):
     fixed_version: str | None = Field(default=None, description="Earliest fixed version")
     severity: str = Field(default="UNKNOWN", description="Advisory severity from OSV")
     retrieved_at: int | None = Field(default=None, description="Advisory retrieval timestamp")
+    review_required: bool = Field(default=False, description="True if underlying evidence changed since decision was recorded (US-402)")
+    review_reason: str | None = Field(default=None, description="Detailed explanation of why review is required")
+    change_category: str | None = Field(default=None, description="Category of detected change (advisory, version, path, multiple)")
+    triaged_by: str | None = Field(default=None, description="Actor who recorded the triage decision")
+    triaged_at: int | None = Field(default=None, description="Timestamp when decision was recorded")
+    triage_justification: str | None = Field(default=None, description="Written justification for triage decision")
+    reviewed_at: int | None = Field(default=None, description="Timestamp when review was acknowledged")
 
 
 class FindingListResponse(BaseModel):
@@ -450,6 +457,101 @@ class FindingPathsResponse(BaseModel):
     evaluated_at: int = Field(..., description="Evaluation timestamp")
     no_path_message: str | None = Field(default=None, description="Explicit disclaimer explaining search bounds and that absence of path does not guarantee safety")
     warnings: list[DataQualityWarning] = Field(default_factory=list, description="Contextual data quality warnings")
+    exposure_path: Any | None = Field(default=None, description="Unified architectural exposure path with internet ingress and service calls (US-205)")
+
+
+# =====================================================================
+# US-205: Architectural Exposure Path Schemas
+# =====================================================================
+
+class ExposureNode(BaseModel):
+    id: str = Field(..., description="Unique node identifier in graph")
+    node_type: Literal["internet", "service", "package"] = Field(..., description="Entity classification")
+    display_name: str = Field(..., description="Human-readable node label")
+    package_name: str | None = Field(default=None)
+    package_version: str | None = Field(default=None)
+    ecosystem: str | None = Field(default=None)
+    purl: str | None = Field(default=None)
+    is_target: bool = Field(default=False, description="True if target vulnerable package")
+    is_entry_point: bool = Field(default=False, description="True if ingress entry service")
+    is_internet: bool = Field(default=False, description="True if public internet ingress node")
+    internet_facing: bool | None = Field(default=None, description="Ingress signal for service nodes")
+    provenance: NodeProvenance = Field(default_factory=NodeProvenance)
+
+
+class ExposureEdge(BaseModel):
+    id: str = Field(..., description="Unique edge identifier")
+    source_id: str = Field(..., description="Source node ID")
+    target_id: str = Field(..., description="Target node ID")
+    relationship_type: str = Field(default="DEPENDS_ON", description="CALLS, DEPENDS_ON, or INGRESS")
+    direct: bool = Field(default=False)
+    origin: str = Field(default="manifest", description="manifest, synthetic, or network")
+    is_synthetic: bool = Field(default=False, description="Visibly flagged if true (US-205 AC3)")
+    protocol: str | None = Field(default=None)
+
+
+class ArchitecturalExposurePath(BaseModel):
+    id: str = Field(..., description="Deterministic path identifier")
+    total_depth: int = Field(..., description="Combined hop count from entry to target package")
+    service_hop_count: int = Field(default=0, description="Number of CALLS edges")
+    package_hop_count: int = Field(default=1, description="Number of DEPENDS_ON edges")
+    has_internet_facing_entry: bool = Field(default=False, description="True if entry service is internet-facing")
+    has_synthetic_edges: bool = Field(default=False, description="True if path traverses synthetic edges")
+    nodes: list[ExposureNode] = Field(default_factory=list)
+    edges: list[ExposureEdge] = Field(default_factory=list)
+    summary_text: str = Field(default="", description="Screen-reader accessible textual exposure chain")
+
+
+class UnsupportedEcosystemItem(BaseModel):
+    package_name: str
+    package_version: str
+    ecosystem: str
+    service_name: str
+    reason: str = "Unsupported ecosystem: not analyzed for automated version matching"
+
+
+class ArchitecturalExposureItem(BaseModel):
+    finding_id: str
+    advisory_id: str
+    severity: str
+    priority: str
+    affected_service_id: str
+    affected_service_name: str
+    package_name: str
+    package_version: str
+    package_version_id: str
+    ecosystem: str
+    is_ecosystem_supported: bool
+    exposure_status: Literal["internet_exposed", "internal_only", "missing_topology", "not_analyzed"]
+    has_internet_facing_entry: bool
+    entry_service_id: str | None = None
+    entry_service_name: str | None = None
+    is_entry_service_internet_facing: bool = False
+    service_hop_count: int = 0
+    package_hop_count: int = 1
+    total_depth: int = 1
+    has_synthetic_edges: bool = False
+    paths: list[ArchitecturalExposurePath] = Field(default_factory=list)
+    remediation_target: str | None = None
+    non_exploitability_disclaimer: str = (
+        "Architectural exposure, not proof of exploitability. Paths show architectural reachability "
+        "through service and dependency topology, not runtime exploit execution. Absence of a path does not guarantee safety. 'No path found' is not a guarantee of safety."
+    )
+
+
+class ProjectExposurePathsResponse(BaseModel):
+    project_id: str
+    topology_status: Literal["complete", "missing_topology", "internal_only", "unsupported_ecosystem"]
+    has_internet_exposure: bool
+    total_exposure_paths: int
+    items: list[ArchitecturalExposureItem]
+    unsupported_ecosystems: list[UnsupportedEcosystemItem] = Field(default_factory=list)
+    disclaimer: str = (
+        "Architectural exposure, not proof of exploitability. Paths show architectural reachability "
+        "through service and dependency topology, not runtime exploit execution. Absence of a path does not guarantee safety. 'No path found' is not a guarantee of safety."
+    )
+    warnings: list[DataQualityWarning] = Field(default_factory=list)
+    evaluated_at: int
 
 
 
@@ -722,4 +824,79 @@ class GitHubIssueRecordResponse(BaseModel):
 class GitHubIssueListResponse(BaseModel):
     items: list[GitHubIssueRecordResponse] = Field(default_factory=list, description="List of created remediation issues")
     total: int = Field(default=0, description="Total issues created for project")
+
+
+# =====================================================================
+# US-401 / US-402: Triage Decisions and Change Detection Schemas
+# =====================================================================
+
+class DecisionBaselineModel(BaseModel):
+    advisory_id: str = Field(..., description="Vulnerability advisory identifier")
+    severity: str = Field(..., description="Advisory severity at decision time")
+    matched_range: str | None = Field(default=None, description="Matched version constraint range at decision time")
+    fixed_version: str | None = Field(default=None, description="Published fixed version at decision time")
+    summary: str | None = Field(default=None, description="Advisory summary text at decision time")
+    modified: str | None = Field(default=None, description="Advisory upstream modified timestamp/string at decision time")
+    package_name: str = Field(..., description="Package name at decision time")
+    package_version: str = Field(..., description="Installed package version at decision time")
+    package_version_id: str = Field(..., description="Package version node ID at decision time")
+    path_depth: int | None = Field(default=None, description="Dependency path depth at decision time")
+    path_status: str = Field(default="path_found", description="Path reachability status at decision time")
+    fingerprint: str = Field(..., description="Cryptographic SHA-256 fingerprint binding the decision evidence")
+
+
+class TriageDecisionRequest(BaseModel):
+    status: Literal["open", "under_investigation", "affected", "not_affected", "fixed"] = Field(
+        ..., description="Triage status (open, under_investigation, affected, not_affected, fixed)"
+    )
+    justification: str | None = Field(
+        default=None,
+        description="Written justification; mandatory (min 10 characters) when status is 'not_affected'",
+    )
+
+    @model_validator(mode="after")
+    def validate_justification(self) -> "TriageDecisionRequest":
+        if self.status == "not_affected":
+            if not self.justification or len(self.justification.strip()) < 10:
+                raise ValueError(
+                    "A written justification of at least 10 characters is required when marking a finding as 'not_affected' (US-401)."
+                )
+        return self
+
+
+class ReviewDecisionRequest(BaseModel):
+    notes: str | None = Field(default=None, description="Reviewer justification or acknowledgment notes")
+    action: str = Field(default="confirm", description="Review action: 'confirm' to reaffirm decision with new baseline, or 'update' to re-triage")
+    new_status: str | None = Field(default=None, description="Optional new triage status if re-triaging")
+    new_justification: str | None = Field(default=None, description="Optional new justification if re-triaging")
+
+
+class TriageDecisionResponse(BaseModel):
+    project_id: str = Field(..., description="Project workspace identifier")
+    finding_id: str = Field(..., description="Finding identifier")
+    advisory_id: str = Field(..., description="Advisory identifier")
+    package_version_id: str = Field(..., description="Package version identifier")
+    status: str = Field(..., description="Current triage status")
+    justification: str | None = Field(default=None, description="Triage justification")
+    triaged_by: str = Field(default="agent", description="Actor who recorded the decision")
+    triaged_at: int = Field(..., description="Unix timestamp of decision")
+    review_required: bool = Field(default=False, description="True if underlying evidence changed since decision was recorded (US-402)")
+    review_reason: str | None = Field(default=None, description="Explanation of why review is required")
+    change_category: str | None = Field(default=None, description="Category of detected change (advisory, version, path, multiple)")
+    reviewed_at: int | None = Field(default=None, description="Unix timestamp when review was acknowledged")
+    reviewed_by: str | None = Field(default=None, description="Actor who reviewed/acknowledged the change")
+    baseline: DecisionBaselineModel | None = Field(default=None, description="Persisted baseline evidence snapshot")
+
+
+class ChangeComparisonResponse(BaseModel):
+    finding_id: str = Field(..., description="Finding identifier")
+    has_changed: bool = Field(..., description="True if any decision-relevant evidence changed")
+    review_required: bool = Field(..., description="True if finding is flagged as requiring human review")
+    has_baseline: bool = Field(..., description="True if a valid decision baseline was previously recorded")
+    category: str | None = Field(default=None, description="Change category (advisory, version, path, multiple)")
+    reason: str | None = Field(default=None, description="Human-readable reason describing detected differences")
+    changes: list[str] = Field(default_factory=list, description="Structured list of detected differences")
+    current_evidence: dict[str, Any] = Field(default_factory=dict, description="Current authoritative evidence snapshot")
+    baseline: DecisionBaselineModel | None = Field(default=None, description="Recorded baseline evidence snapshot")
+
 

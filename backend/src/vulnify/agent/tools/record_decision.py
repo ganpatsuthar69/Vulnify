@@ -83,6 +83,8 @@ async def handle_record_decision(inputs: RecordDecisionInput) -> RecordDecisionR
             detail="Operation rejected: 'record_decision' is a gated write tool requiring explicit approval ('confirmed': true).",
         )
 
+    from vulnify.services.decision_service import get_decision_service
+
     # 2. Resolve finding to locate specific advisory and package_version_id
     finding = repo.get_project_finding_detail(inputs.project_id, inputs.finding_id)
     if not finding:
@@ -95,16 +97,16 @@ async def handle_record_decision(inputs: RecordDecisionInput) -> RecordDecisionR
     package_version_id = finding["package_version_id"]
     previous_status = finding.get("status", "open")
 
-    # 3. Persist decision using parameterized query
-    updated = repo.record_triage_decision(
+    # 3. Persist decision and baseline using centralized decision service
+    decision_service = get_decision_service(repo)
+    dec_record = decision_service.record_decision(
         project_id=inputs.project_id,
-        advisory_id=advisory_id,
-        package_version_id=package_version_id,
+        finding_id=inputs.finding_id,
         status=inputs.status,
         justification=inputs.justification,
-        triaged_by=inputs.triaged_by,
-        triaged_at=now,
+        triaged_by=inputs.triaged_by or "agent",
     )
+    updated = True
 
     duration_ms = round((time.perf_counter() - start) * 1000, 2)
     summary = (

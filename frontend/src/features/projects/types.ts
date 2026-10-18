@@ -298,6 +298,70 @@ export interface FindingItem {
   fixed_version?: string | null
   severity?: string
   retrieved_at?: number | null
+  review_required?: boolean
+  review_reason?: string | null
+  change_category?: string | null
+  triaged_by?: string | null
+  triaged_at?: number | null
+  triage_justification?: string | null
+  reviewed_at?: number | null
+  reviewed_by?: string | null
+}
+
+export interface DecisionBaseline {
+  advisory_id: string
+  package_version_id: string
+  package_name: string
+  package_version: string
+  severity?: string | null
+  matched_range?: string | null
+  fixed_version?: string | null
+  advisory_modified?: string | null
+  path_status?: string | null
+  path_depth?: number | null
+  fingerprint: string
+  captured_at: number
+}
+
+export interface TriageDecisionRequest {
+  status: FindingTriageStatus
+  justification?: string | null
+}
+
+export interface ReviewDecisionRequest {
+  action?: 'confirm' | 'update' | string
+  new_status?: FindingTriageStatus | null
+  new_justification?: string | null
+  notes?: string | null
+}
+
+export interface TriageDecisionResponse {
+  project_id: string
+  finding_id: string
+  advisory_id: string
+  package_version_id: string
+  status: string
+  justification?: string | null
+  triaged_by: string
+  triaged_at: number
+  review_required: boolean
+  review_reason?: string | null
+  change_category?: string | null
+  reviewed_at?: number | null
+  reviewed_by?: string | null
+  baseline?: DecisionBaseline | null
+}
+
+export interface ChangeComparisonResponse {
+  finding_id: string
+  has_changed: boolean
+  review_required: boolean
+  has_baseline: boolean
+  category?: string | null
+  reason?: string | null
+  changes: string[]
+  current_evidence: Record<string, unknown>
+  baseline?: DecisionBaseline | null
 }
 
 export interface FindingListResponse {
@@ -395,6 +459,98 @@ export interface FindingPathsResponse {
   evaluated_at: number
   no_path_message?: string | null
   warnings?: DataQualityWarning[]
+  exposure_path?: ArchitecturalExposureItem | null
+}
+
+// =====================================================================
+// US-205: Architectural Exposure Path Types
+// =====================================================================
+
+export interface ExposureNode {
+  id: string
+  node_type: 'internet' | 'service' | 'package'
+  display_name: string
+  package_name?: string | null
+  package_version?: string | null
+  ecosystem?: string | null
+  purl?: string | null
+  is_target: boolean
+  is_entry_point: boolean
+  is_internet: boolean
+  internet_facing?: boolean | null
+  provenance: NodeProvenance
+}
+
+export interface ExposureEdge {
+  id: string
+  source_id: string
+  target_id: string
+  relationship_type: string
+  direct: boolean
+  origin: string
+  is_synthetic: boolean
+  protocol?: string | null
+}
+
+export interface ArchitecturalExposurePath {
+  id: string
+  total_depth: number
+  service_hop_count: number
+  package_hop_count: number
+  has_internet_facing_entry: boolean
+  has_synthetic_edges: boolean
+  nodes: ExposureNode[]
+  edges: ExposureEdge[]
+  summary_text: string
+}
+
+export interface UnsupportedEcosystemItem {
+  package_name: string
+  package_version: string
+  ecosystem: string
+  service_name: string
+  reason: string
+}
+
+export type ExposureStatus = 'internet_exposed' | 'internal_only' | 'missing_topology' | 'not_analyzed'
+export type TopologyStatus = 'complete' | 'missing_topology' | 'internal_only' | 'unsupported_ecosystem'
+
+export interface ArchitecturalExposureItem {
+  finding_id: string
+  advisory_id: string
+  severity: string
+  priority: FindingPriority
+  affected_service_id: string
+  affected_service_name: string
+  package_name: string
+  package_version: string
+  package_version_id: string
+  ecosystem: string
+  is_ecosystem_supported: boolean
+  exposure_status: ExposureStatus
+  has_internet_facing_entry: boolean
+  entry_service_id?: string | null
+  entry_service_name?: string | null
+  is_entry_service_internet_facing: boolean
+  service_hop_count: number
+  package_hop_count: number
+  total_depth: number
+  has_synthetic_edges: boolean
+  paths: ArchitecturalExposurePath[]
+  remediation_target?: string | null
+  non_exploitability_disclaimer: string
+}
+
+export interface ProjectExposurePathsResponse {
+  project_id: string
+  topology_status: TopologyStatus
+  has_internet_exposure: boolean
+  total_exposure_paths: number
+  items: ArchitecturalExposureItem[]
+  unsupported_ecosystems: UnsupportedEcosystemItem[]
+  disclaimer: string
+  warnings: DataQualityWarning[]
+  evaluated_at: number
 }
 
 // =====================================================================

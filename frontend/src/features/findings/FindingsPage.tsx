@@ -861,13 +861,23 @@ export function FindingsPage() {
 
                       {/* 6. Status */}
                       <td className="py-3 px-4 align-top">
-                        <span
-                          className={`inline-block rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider border ${getStatusBadgeClass(
-                            finding.status,
-                          )}`}
-                        >
-                          {formatStatusLabel(finding.status)}
-                        </span>
+                        <div className="flex flex-col items-start gap-1">
+                          <span
+                            className={`inline-block rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider border ${getStatusBadgeClass(
+                              finding.status,
+                            )}`}
+                          >
+                            {formatStatusLabel(finding.status)}
+                          </span>
+                          {finding.review_required && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded bg-rose-500/20 border border-rose-500/30 px-1.5 py-0.5 text-[9px] font-bold text-rose-300"
+                              title={finding.review_reason || 'Evidence supporting prior decision has changed.'}
+                            >
+                              Needs Review
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Actions */}

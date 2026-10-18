@@ -275,4 +275,66 @@ RETURN count(r) AS updated_count
 - Parameterized only; no string interpolation.
 - State mutation strictly gated behind human approval verification (`confirmed: true`).
 
+---
+
+## 12. Complete Topology Traversal for Exposure Analysis (`get_project_exposure_paths.cypher`) (US-205)
+
+### Purpose
+Traverses combined service topology and package dependency chains starting from internet-facing services to determine whether affected services and package vulnerabilities are architecturally reachable from the outside world. AC1: Unifies the internet entry point, entry service, intermediate service calls, and package dependency chain into a single comprehensive path. AC2: Enforces the mandatory disclaimer "architectural exposure, not proof of exploitability" and "'No path found' is not a guarantee of safety". AC3: Flags synthetic edges (`origin: 'synthetic'`) visibly and isolates unsupported package ecosystems.
+
+### Cypher Query Template
+```cypher
+// name: get_project_exposure_paths
+// what it proves: traverses unified paths from internet-facing services through service calls and package dependencies to vulnerable versions
+// parameters: $project_id, $limit
+MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(entry_service:Service)
+WHERE entry_service.internet_facing = true
+MATCH call_path = (entry_service)-[:CALLS*0..5]->(target_service:Service)
+MATCH dep_path = (target_service)-[:DEPENDS_ON*1..8]->(pv:PackageVersion)
+MATCH (v:Vulnerability)-[r:AFFECTS]->(pv)
+WHERE coalesce(r.status, 'affected') = 'affected'
+  AND coalesce(r.triage_status, 'open') <> 'not_affected'
+WITH entry_service, target_service, pv, v, r, call_path, dep_path,
+     length(call_path) AS service_hops,
+     length(dep_path) AS package_hops,
+     (length(call_path) + length(dep_path)) AS total_depth
+ORDER BY total_depth ASC, service_hops ASC
+RETURN entry_service.id AS entry_service_id,
+       entry_service.name AS entry_service_name,
+       entry_service.internet_facing AS entry_is_internet_facing,
+       target_service.id AS target_service_id,
+       target_service.name AS target_service_name,
+       target_service.internet_facing AS target_is_internet_facing,
+       v.id AS advisory_id,
+       v.summary AS advisory_summary,
+       v.severity AS severity,
+       r.priority AS priority,
+       r.fixed_version AS fixed_version,
+       pv.id AS package_version_id,
+       pv.name AS package_name,
+       pv.version AS package_version,
+       pv.ecosystem AS ecosystem,
+       [n IN nodes(call_path) | {id: n.id, name: n.name, internet_facing: n.internet_facing, labels: labels(n)}] AS call_nodes,
+       [rel IN relationships(call_path) | {type: type(rel), origin: coalesce(rel.origin, 'manifest'), properties: properties(rel)}] AS call_edges,
+       [n IN nodes(dep_path) | {id: n.id, name: n.name, version: n.version, ecosystem: n.ecosystem, labels: labels(n)}] AS dep_nodes,
+       [rel IN relationships(dep_path) | {type: type(rel), origin: coalesce(rel.origin, 'manifest'), properties: properties(rel)}] AS dep_edges,
+       service_hops,
+       package_hops,
+       total_depth
+LIMIT $limit
+```
+
+### Entity Model and Direction
+- **Starting Entity**: `(entry_service:Service)` where `internet_facing = true`.
+- **Service Traversal**: `[:CALLS*0..5]` representing microservice invocation chains from the ingress gateway to the hosting service.
+- **Dependency Traversal**: `[:DEPENDS_ON*1..8]` representing direct and transitive package dependencies.
+- **Target Entity**: `(pv:PackageVersion)` affected by `(v:Vulnerability)`.
+
+### Bounds and Complexity
+- **Service Bound**: `*0..5` hops prevents cyclic runaway in microservice meshes.
+- **Dependency Bound**: `*1..8` hops bounds transitive dependency resolution.
+- **Result Bound**: `$limit` (defaults to 100, parameter-controlled).
+- **Cycle Handling**: Tested and validated with recursive cycle avoidance.
+
+
 

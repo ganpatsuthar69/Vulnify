@@ -87,12 +87,14 @@ def score_finding(
     path_depth: int | None = None,
     fixed_version: str | None = None,
     triage_status: str | None = "open",
+    review_required: bool = False,
+    review_reason: str | None = None,
     is_known_exploited: bool | None = None,
     explicit_priority: str | None = None,
 ) -> ScoringResult:
     """Deterministically calculate finding priority band and transparent reasons.
 
-    Rules conform strictly to docs/scoring.md (US-301).
+    Rules conform strictly to docs/scoring.md (US-301) and US-402 (change detection).
     Missing signals are explicitly treated as 'unknown', never zero or absent risk.
     Identical inputs always produce identical outputs.
     """
@@ -112,6 +114,8 @@ def score_finding(
         "path_depth": path_depth,
         "fixed_version": clean_fix,
         "triage_status": norm_triage,
+        "review_required": review_required,
+        "review_reason": review_reason,
         "is_known_exploited": is_known_exploited,
     }
 
@@ -169,7 +173,15 @@ def score_finding(
         reason_codes.append("FIX_VERSION_UNKNOWN")
 
     # 2d. Triage or review reason
-    if norm_triage in ("fixed", "not_affected"):
+    if review_required:
+        reason_text = (
+            f"Prior triage decision requires review: {review_reason}"
+            if review_reason
+            else "Prior triage decision requires review due to underlying changes (US-402)"
+        )
+        reasons.append(reason_text)
+        reason_codes.append("TRIAGE_NEEDS_REVIEW")
+    elif norm_triage in ("fixed", "not_affected"):
         reasons.append(f"Finding resolved or dismissed via triage status '{norm_triage}'")
         reason_codes.append("TRIAGE_STATUS_RESOLVED")
     elif norm_triage == "under_investigation":
@@ -203,8 +215,8 @@ def score_finding(
             signals=signals_dict,
         )
 
-    # Rule 1: Triage resolution or confirmed not affected -> Low
-    if norm_triage in ("fixed", "not_affected") or norm_match == "not_affected":
+    # Rule 1: Triage resolution or confirmed not affected -> Low (only when not flagged for review)
+    if ((norm_triage in ("fixed", "not_affected") and not review_required) or norm_match == "not_affected"):
         priority = PriorityBand.LOW.value
 
     # Rule 2: Active known-exploitation signal (US-302 forward-compatibility)

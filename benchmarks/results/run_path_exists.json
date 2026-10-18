@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0.0",
-  "run_id": "run-20261018_120925",
+  "run_id": "run-20261018_125526",
   "dataset_version": "1.0.0",
   "corpus_id": "corpus-ecommerce-v1",
-  "started_at": "2026-10-18T12:09:25.339430+00:00",
-  "completed_at": "2026-10-18T12:09:25.342187+00:00",
+  "started_at": "2026-10-18T12:55:26.278383+00:00",
+  "completed_at": "2026-10-18T12:55:26.281333+00:00",
   "protocol": {
     "protocol_version": "1.0.0",
     "graph_system_name": "vulnify-graph-agent",

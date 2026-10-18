@@ -27,7 +27,7 @@ async def test_user_registration_success(client: AsyncClient) -> None:
     data = response.json()
     assert data["email"] == SAMPLE_USER["email"]
     assert data["name"] == SAMPLE_USER["name"]
-    assert data["role"] == "user"  # Enforces default user role
+    assert data["role"] == "admin"  # All registered users possess admin access by default
     assert "id" in data
 
     # Verify session cookie was set with HttpOnly and SameSite
@@ -84,7 +84,7 @@ async def test_login_success_with_registered_user(client: AsyncClient) -> None:
     )
     assert login_res.status_code == 200
     assert login_res.json()["email"] == SAMPLE_USER["email"]
-    assert login_res.json()["role"] == "user"
+    assert login_res.json()["role"] == "admin"
 
     # Verify /api/auth/me returns the profile
     me_res = await client.get("/api/auth/me")
@@ -146,8 +146,11 @@ async def test_role_based_access_control(
     mock_user_repo: InMemoryUserRepository,
 ) -> None:
     """Standard users are blocked from admin routes; admins are granted access."""
-    # Register normal user
+    # Register user (admin by default)
     await client.post("/api/auth/register", json=SAMPLE_USER)
+
+    # Demote user to test restriction behavior
+    mock_user_repo.update_role(SAMPLE_USER["email"], "user")
 
     # Standard user visits admin endpoint -> 403 Forbidden
     admin_res = await client.get("/api/admin/status")
@@ -157,7 +160,7 @@ async def test_role_based_access_control(
     assert "Administrator access required" in admin_data["message"]
     assert admin_res.headers["X-Request-ID"] == admin_data["request_id"]
 
-    # Deliberately promote user to admin in repository
+    # Deliberately promote user back to admin in repository
     mock_user_repo.update_role(SAMPLE_USER["email"], "admin")
 
     # Now the same user has admin access

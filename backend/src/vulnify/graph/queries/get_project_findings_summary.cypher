@@ -14,4 +14,4 @@ RETURN
   count(*) AS advisory_matches,
   sum(CASE WHEN path_depth IS NOT NULL AND path_depth >= 1 THEN 1 ELSE 0 END) AS findings_with_path,
   sum(CASE WHEN path_depth IS NULL OR path_depth < 1 THEN 1 ELSE 0 END) AS findings_without_path,
-  sum(CASE WHEN toLower(coalesce(r.triage_status, 'open')) IN ['open', 'under_investigation'] THEN 1 ELSE 0 END) AS findings_needing_decision
+  sum(CASE WHEN toLower(coalesce(r.triage_status, 'open')) IN ['open', 'under_investigation'] OR coalesce(r.review_required, false) = true THEN 1 ELSE 0 END) AS findings_needing_decision

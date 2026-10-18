@@ -27,6 +27,13 @@ RETURN s.id AS service_id,
        coalesce(r.priority, v.priority, 'unknown') AS priority,
        coalesce(r.triage_status, 'open') AS status,
        path_depth,
-       v.fixed_versions AS advisory_fixed_versions
+       v.fixed_versions AS advisory_fixed_versions,
+       coalesce(r.review_required, false) AS review_required,
+       r.review_reason AS review_reason,
+       r.triaged_by AS triaged_by,
+       r.triaged_at AS triaged_at,
+       r.triage_justification AS triage_justification,
+       r.baseline_data AS baseline_data,
+       r.reviewed_at AS reviewed_at
 ORDER BY v.id ASC
 LIMIT 1

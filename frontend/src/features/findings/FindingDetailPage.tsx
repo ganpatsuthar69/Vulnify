@@ -233,6 +233,14 @@ export function FindingDetailPage() {
             <span className="rounded border border-slate-700 bg-slate-800/80 px-2 py-0.5 text-xs font-medium text-slate-300">
               Status: <strong className="text-white capitalize">{finding.status}</strong>
             </span>
+
+            {/* US-402: Needs Review Badge */}
+            {finding.review_required && (
+              <span className="rounded bg-rose-500/20 border border-rose-500/40 px-2.5 py-0.5 text-xs font-semibold text-rose-300 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                <span>Needs Review</span>
+              </span>
+            )}
           </div>
 
           {/* Finding ID and Aliases */}
@@ -287,6 +295,39 @@ export function FindingDetailPage() {
           ) : null}
         </div>
       </div>
+
+      {/* US-402: Contextual Review Required Banner */}
+      {finding.review_required && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-950/25 p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <h2 className="text-sm font-bold text-rose-200">
+                Decision Requires Review &bull; Underlying Evidence Changed
+              </h2>
+              <p className="mt-1 text-xs text-rose-200/90 leading-relaxed">
+                {finding.review_reason || 'Evidence supporting the previous decision has changed since it was recorded.'}
+              </p>
+              {finding.triage_justification && (
+                <div className="mt-2 text-xs text-slate-300">
+                  <strong>Prior recorded justification:</strong> &ldquo;{finding.triage_justification}&rdquo;
+                  {finding.triaged_by && (
+                    <span className="text-slate-400 ml-1.5">(recorded by {finding.triaged_by})</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              to="/review"
+              className="rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-rose-500 transition-colors shadow-sm"
+            >
+              Open Review Queue
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* US-207: Contextual Data Quality & Analysis Limits Banner */}
       {finding.warnings && finding.warnings.length > 0 && (
