@@ -160,7 +160,7 @@ export function GitHubIssuesPage() {
     }
   }, [activeProject, selectedFindingId, targetVersion, fetchPreview])
 
-  // Handle title edit: reset approval checkbox immediately (US-503 criteria)
+  // Handle title edit: reset approval checkbox immediately
   const handleTitleChange = (newTitle: string) => {
     setCustomTitle(newTitle)
     setHasApproved(false)
@@ -172,7 +172,7 @@ export function GitHubIssuesPage() {
     void fetchPreview(customTitle)
   }
 
-  // 4. Approve and Submit (US-504)
+  // 4. Approve and Submit
   const handleApproveAndSubmit = async () => {
     if (!activeProject || !selectedFindingId || !preview || !hasApproved) return
 
@@ -220,9 +220,6 @@ export function GitHubIssuesPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-white">GitHub Remediation Issues</h1>
-            <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
-              US-503 &bull; US-504
-            </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
             Cryptographically bound issue previews with mandatory human approval gating before real GitHub issue creation.
@@ -268,7 +265,7 @@ export function GitHubIssuesPage() {
           <div className="space-y-1">
             <span className="font-semibold text-white">Human Approval Gate & CSRF Integrity:</span>
             <p className="text-sky-200/90 leading-relaxed">
-              Every remediation issue requires explicit human approval bound to a SHA-256 cryptographic plan hash (US-503).
+              Every remediation issue requires explicit human approval bound to a SHA-256 cryptographic plan hash.
               The backend requires strict CSRF verification (<code className="font-mono text-sky-300">X-Requested-With: vulnify</code>).
               Per Vulnify safety policy, raw untrusted advisory markdown is never injected unquoted into issue tickets.
             </p>
@@ -379,7 +376,7 @@ export function GitHubIssuesPage() {
             {/* Target Repository */}
             <div className="rounded-lg border border-slate-800/80 bg-[#0b121a] p-3 text-xs space-y-1">
               <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                Target Repository (US-506)
+                Target Repository
               </span>
               <div className="flex items-center justify-between text-slate-300 font-mono">
                 <span>{preview?.target_repo || integrationStatus?.target_repo || 'vulnify/demo-workspace'}</span>
@@ -509,15 +506,15 @@ export function GitHubIssuesPage() {
 
             <div className="text-[11px] text-slate-500 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
               <span>* Preview generated from verified FalkorDB graph reachability evidence.</span>
-              <span className="text-slate-400">Gated by US-504 approval protocol</span>
+              <span className="text-slate-400">Gated by approval protocol</span>
             </div>
           </div>
 
-          {/* Issue Audit Trail (US-505) */}
+          {/* Issue Audit Trail */}
           <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-5 shadow-xl space-y-3">
             <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
               <Clock className="h-3.5 w-3.5 text-sky-400" />
-              <span>Project Issue Action History (US-505)</span>
+              <span>Project Issue Action History</span>
             </h3>
 
             {issueHistory.length === 0 ? (

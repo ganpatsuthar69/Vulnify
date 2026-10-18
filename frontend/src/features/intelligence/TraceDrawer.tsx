@@ -150,9 +150,6 @@ export function TraceDrawer({ runId, isOpen, onClose, onReopenRun }: TraceDrawer
                   <h2 id="trace-drawer-title" className="text-sm font-bold text-white tracking-tight">
                     Investigation Execution Trace
                   </h2>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                    US-603
-                  </span>
                 </div>
                 <p className="text-[11px] text-slate-400 font-mono mt-0.5">
                   Run ID: {runId || 'Unknown'}

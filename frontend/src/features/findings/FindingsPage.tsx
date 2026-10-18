@@ -53,7 +53,7 @@ export function FindingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [errorRequestId, setErrorRequestId] = useState<string | null>(null)
 
-  // Summary cards state (US-202)
+  // Summary cards state
   const [summaryData, setSummaryData] = useState<FindingSummaryResponse | null>(null)
   const [isSummaryLoading, setIsSummaryLoading] = useState(false)
   const [summaryError, setSummaryError] = useState<string | null>(null)
@@ -162,7 +162,7 @@ export function FindingsPage() {
     [currentPage, priorityFilter, serviceFilter, statusFilter, urlSearchTerm],
   )
 
-  // Fetch aggregated findings summary for summary cards (US-202)
+  // Fetch aggregated findings summary for summary cards
   const loadSummary = useCallback(
     async (projectId: string) => {
       setIsSummaryLoading(true)
@@ -189,7 +189,7 @@ export function FindingsPage() {
     [priorityFilter, serviceFilter, statusFilter, urlSearchTerm],
   )
 
-  // Fetch project data-quality warnings (US-207)
+  // Fetch project data-quality warnings
   const loadWarnings = useCallback(async (projectId: string) => {
     try {
       const dq = await getProjectDataQuality(projectId)
@@ -391,7 +391,7 @@ export function FindingsPage() {
         </div>
       </div>
 
-      {/* US-207: Data Quality & Scope Warning Banner */}
+      {/* Data Quality & Scope Warning Banner */}
       <DataQualityBanner warnings={warnings} />
 
       {/* Findings Error State */}
@@ -441,7 +441,7 @@ export function FindingsPage() {
         </div>
       )}
 
-      {/* 4 Data-Driven Summary Cards (US-202) */}
+      {/* 4 Data-Driven Summary Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" role="region" aria-label="Security Findings Summary">
         {/* Card 1: Advisory Matches */}
         <div

@@ -119,7 +119,7 @@ export function ImportDataPage() {
             </div>
             <div>
               <div className="font-semibold text-white">Parse &amp; Persist Graph</div>
-              <div className="text-[11px] text-slate-400">Upload lockfile / manifest (US-102)</div>
+              <div className="text-[11px] text-slate-400">Upload lockfile / manifest</div>
             </div>
           </div>
           {activeTab === 'lockfile' && (
@@ -150,7 +150,7 @@ export function ImportDataPage() {
             </div>
             <div>
               <div className="font-semibold text-white">Ingest OSV Advisories</div>
-              <div className="text-[11px] text-slate-400">Query api.osv.dev batch (US-103)</div>
+              <div className="text-[11px] text-slate-400">Query api.osv.dev batch</div>
             </div>
           </div>
           {activeTab === 'osv' && (
@@ -181,7 +181,7 @@ export function ImportDataPage() {
             </div>
             <div>
               <div className="font-semibold text-white">Ecosystem Matching</div>
-              <div className="text-[11px] text-slate-400">Evaluate SemVer ranges (US-104)</div>
+              <div className="text-[11px] text-slate-400">Evaluate SemVer ranges</div>
             </div>
           </div>
           {activeTab === 'matching' && (
@@ -198,7 +198,7 @@ export function ImportDataPage() {
           <div className="space-y-4">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <UploadCloud className="h-4 w-4 text-sky-400" />
-              <span>Stage 1: Multi-Ecosystem Dependency Ingestion (US-102)</span>
+              <span>Stage 1: Multi-Ecosystem Dependency Ingestion</span>
             </div>
             <LockfileImportCard project={activeProject} />
 
@@ -223,7 +223,7 @@ export function ImportDataPage() {
           <div className="space-y-4">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-amber-400" />
-              <span>Stage 2: OSV Advisory Ingestion &amp; Caching (US-103)</span>
+              <span>Stage 2: OSV Advisory Ingestion &amp; Caching</span>
             </div>
             <OsvAdvisoryCard project={activeProject} />
 
@@ -253,7 +253,7 @@ export function ImportDataPage() {
           <div className="space-y-4">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <Cpu className="h-4 w-4 text-emerald-400" />
-              <span>Stage 3: Ecosystem-Aware Version Matching (US-104)</span>
+              <span>Stage 3: Ecosystem-Aware Version Matching</span>
             </div>
             <VersionMatchingCard project={activeProject} />
 

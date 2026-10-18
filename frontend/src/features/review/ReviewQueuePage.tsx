@@ -84,7 +84,7 @@ export function ReviewQueuePage() {
     if (!activeProject || !selectedFinding) return
 
     if (decisionInput === 'not_affected' && justification.trim().length < 10) {
-      setJustificationError('A written justification of at least 10 characters is required when marking a finding as "Not Affected" (US-401).')
+      setJustificationError('A written justification of at least 10 characters is required when marking a finding as "Not Affected".')
       return
     }
 
@@ -155,9 +155,6 @@ export function ReviewQueuePage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-bold text-white">Security Review Queue</h1>
-            <span className="rounded-full bg-sky-500/20 border border-sky-500/30 px-2.5 py-0.5 text-xs font-semibold text-sky-300">
-              US-401 &bull; US-402
-            </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
             Review and capture decisions for{' '}
@@ -389,7 +386,7 @@ export function ReviewQueuePage() {
                   <div className="rounded-lg border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-200 flex items-start gap-2.5">
                     <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
                     <div className="space-y-1">
-                      <div className="font-semibold text-rose-300">Evidence Difference Detected (US-402):</div>
+                      <div className="font-semibold text-rose-300">Evidence Difference Detected:</div>
                       <p className="text-rose-200/90 leading-relaxed">{f.review_reason}</p>
                     </div>
                   </div>

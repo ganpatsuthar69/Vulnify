@@ -55,7 +55,7 @@ export function AiInvestigationPage() {
   const [currentStatusText, setCurrentStatusText] = useState<string | null>(null)
   const [activeToolSteps, setActiveToolSteps] = useState<ToolStepInfo[]>([])
 
-  // US-603: URL Reopen & Trace Drawer State
+  // URL Reopen & Trace Drawer State
   const [searchParams, setSearchParams] = useSearchParams()
   const reopenRunId = searchParams.get('reopen')
   const [traceDrawerRunId, setTraceDrawerRunId] = useState<string | null>(null)
@@ -90,7 +90,7 @@ export function AiInvestigationPage() {
     messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' })
   }, [messages, isThinking, currentStatusText, activeToolSteps])
 
-  // US-603: Load historical run when ?reopen={runId} is provided
+  // Load historical run when ?reopen={runId} is provided
   useEffect(() => {
     if (!reopenRunId) {
       setReopenedRunMeta(null)
@@ -664,9 +664,6 @@ export function AiInvestigationPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-white">AI Security Investigation</h1>
-            <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
-              US-602 &bull; Streaming Agent
-            </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
             Interactive reasoning agent grounded directly in FalkorDB graph queries and OSV vulnerability records.
@@ -693,7 +690,7 @@ export function AiInvestigationPage() {
         </div>
       </div>
 
-      {/* Safety & Honesty Banner (US-604 & US-605) */}
+      {/* Safety & Honesty Banner */}
       <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-3.5 text-xs text-sky-200">
         <div className="flex items-start gap-2.5">
           <Terminal className="h-4 w-4 text-sky-400 mt-0.5 shrink-0" aria-hidden="true" />
@@ -708,7 +705,7 @@ export function AiInvestigationPage() {
         </div>
       </div>
 
-      {/* Reopened Historical Run Banner (US-603) */}
+      {/* Reopened Historical Run Banner */}
       {reopenedRunMeta && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start sm:items-center gap-2.5">
@@ -1111,7 +1108,7 @@ export function AiInvestigationPage() {
         )}
       </div>
 
-      {/* Embedded Slide-over Trace Drawer (US-603) */}
+      {/* Embedded Slide-over Trace Drawer */}
       <TraceDrawer
         runId={traceDrawerRunId}
         isOpen={isTraceDrawerOpen}

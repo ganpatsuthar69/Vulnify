@@ -149,9 +149,6 @@ export function BenchmarksPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-bold tracking-tight text-white">Benchmark Results</h1>
-            <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
-              US-802 &bull; US-803
-            </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
             Head-to-head empirical comparison of Vulnify Graph Agent against RAG Baseline using the exact same evidence and model.
@@ -205,7 +202,7 @@ export function BenchmarksPage() {
         </div>
       </div>
 
-      {/* Graph-Path Query Latency Benchmark Panel (US-903) */}
+      {/* Graph-Path Query Latency Benchmark Panel */}
       <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-5 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
           <div className="flex items-center gap-2.5">
@@ -215,9 +212,6 @@ export function BenchmarksPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-white">Graph-Path Query Benchmark</h2>
-                <span className="rounded-full bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[9px] font-bold text-indigo-300">
-                  US-903
-                </span>
                 {graphPathResult && (
                   <span
                     className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
@@ -346,7 +340,7 @@ export function BenchmarksPage() {
             <h3 className="text-base font-bold text-white">No Benchmark Results Yet</h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
               No benchmark comparison run exists in the repository yet.
-              Per US-803 acceptance criteria, measured counts and comparisons will appear after the US-802 harness has been executed.
+              Measured counts and comparisons will appear after the benchmark harness has been executed.
             </p>
           </div>
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -621,7 +615,7 @@ export function BenchmarksPage() {
                         {/* Ground Truth Expected Conclusion */}
                         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 space-y-1">
                           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                            Verified Expected Ground Truth (US-801)
+                            Verified Expected Ground Truth
                           </span>
                           <p className="text-slate-200 leading-relaxed">{c.expected_conclusion}</p>
                         </div>

@@ -78,7 +78,7 @@ const NAV_GROUPS: NavGroup[] = [
     group: 'Remediation',
     items: [
       { name: 'Upgrade Candidates', path: '/upgrades', icon: ArrowUpCircle },
-      { name: 'Fix Simulation', path: '/simulation', icon: FlaskConical, badge: 'US-502', isPlanned: true },
+      { name: 'Fix Simulation', path: '/simulation', icon: FlaskConical, isPlanned: true },
       { name: 'GitHub Issues', path: '/github-issues', icon: GitPullRequest },
     ],
   },
@@ -86,7 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
     group: 'Intelligence',
     items: [
       { name: 'AI Investigation', path: '/investigation', icon: Bot },
-      { name: 'Investigation History', path: '/investigation-history', icon: Clock, badge: 'US-603', isPlanned: true },
+      { name: 'Investigation History', path: '/investigation-history', icon: Clock, isPlanned: true },
       { name: 'Benchmarks', path: '/benchmarks', icon: BarChart3 },
     ],
   },

@@ -71,9 +71,6 @@ export function RiskPrioritiesPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-bold text-white">Risk Priorities &amp; Ranking</h1>
-            <span className="rounded-full bg-sky-500/20 border border-sky-500/30 px-2.5 py-0.5 text-xs font-semibold text-sky-300">
-              US-301 &bull; Backend Deterministic Scoring
-            </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
             Findings ranked into deterministic priority bands with transparent reasons for{' '}
@@ -222,7 +219,7 @@ export function RiskPrioritiesPage() {
 
                 <p className="text-xs text-slate-300">{item.advisory_summary || 'No advisory summary provided.'}</p>
 
-                {/* Deterministic Scoring Reasons (US-301) */}
+                {/* Deterministic Scoring Reasons */}
                 {item.priority_reasons && item.priority_reasons.length > 0 && (
                   <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-3">
                     <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">

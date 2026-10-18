@@ -1,7 +1,7 @@
 import { AlertCircle, Clock } from 'lucide-react'
 
 interface PlannedFeatureCardProps {
-  storyId: string
+  storyId?: string
   title: string
   epic: string
   release: 'R1' | 'R2' | 'R3'
@@ -12,7 +12,7 @@ interface PlannedFeatureCardProps {
 }
 
 export function PlannedFeatureCard({
-  storyId,
+  storyId: _storyId,
   title,
   epic,
   release,
@@ -30,7 +30,7 @@ export function PlannedFeatureCard({
             <Clock className="h-5 w-5 text-amber-400 shrink-0" aria-hidden="true" />
             <div>
               <span className="font-mono text-xs font-bold uppercase tracking-wider text-amber-300">
-                {storyId} &bull; {release} Planned Scope
+                {release} Planned Scope
               </span>
               <h2 className="text-base font-bold text-white">{title}</h2>
             </div>
@@ -46,7 +46,7 @@ export function PlannedFeatureCard({
         </p>
       </div>
 
-      {/* Story Metadata & Spec */}
+      {/* Feature Metadata & Spec */}
       <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-6 shadow-xl space-y-5">
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <span className="rounded bg-slate-800 px-2.5 py-1 text-slate-300 font-medium">
@@ -62,7 +62,7 @@ export function PlannedFeatureCard({
 
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            User Story Description
+            Feature Description
           </h3>
           <p className="mt-1.5 text-sm text-slate-200 leading-relaxed">{description}</p>
         </div>
@@ -93,7 +93,6 @@ export function PlannedFeatureCard({
 
         <div className="border-t border-slate-800/80 pt-4 text-xs text-slate-400 flex items-center justify-between">
           <span>Referenced in Vulnify Product Backlog</span>
-          <span className="font-mono text-[11px] text-slate-500">{storyId}</span>
         </div>
       </div>
     </div>

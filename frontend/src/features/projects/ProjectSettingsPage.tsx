@@ -16,7 +16,7 @@ export function ProjectSettingsPage() {
 
   const handleExportReport = () => {
     setExportNotice(
-      `Report exported for "${activeProject?.name || 'Project'}". Generated structured CSV with priority rankings, reachability path depth, and provenance facts (US-404).`,
+      `Report exported for "${activeProject?.name || 'Project'}". Generated structured CSV with priority rankings, reachability path depth, and provenance facts.`,
     )
     setTimeout(() => setExportNotice(null), 5000)
   }
@@ -115,13 +115,13 @@ export function ProjectSettingsPage() {
           </div>
         </div>
 
-        {/* Report Export (US-404) */}
+        {/* Report Export */}
         <div className="border-t border-slate-800/80 pt-6 space-y-3">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-white flex items-center gap-2">
                 <Download className="h-4 w-4 text-sky-400" />
-                Export Audit Report (US-404)
+                Export Audit Report
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 Generate an exportable CSV containing priority rankings, reachability paths, and provenance facts.

@@ -36,7 +36,7 @@ export function FindingDetailPage() {
   const [isNotFound, setIsNotFound] = useState(false)
   const [reloadTrigger, setReloadTrigger] = useState(0)
 
-  // Stored Agent Traces (US-603)
+  // Stored Agent Traces
   const [findingRuns, setFindingRuns] = useState<AgentRunSummary[]>([])
   const [isLoadingRuns, setIsLoadingRuns] = useState(false)
   const [selectedTraceRunId, setSelectedTraceRunId] = useState<string | null>(null)
@@ -234,7 +234,7 @@ export function FindingDetailPage() {
               Status: <strong className="text-white capitalize">{finding.status}</strong>
             </span>
 
-            {/* US-402: Needs Review Badge */}
+            {/* Needs Review Badge */}
             {finding.review_required && (
               <span className="rounded bg-rose-500/20 border border-rose-500/40 px-2.5 py-0.5 text-xs font-semibold text-rose-300 flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" />
@@ -296,7 +296,7 @@ export function FindingDetailPage() {
         </div>
       </div>
 
-      {/* US-402: Contextual Review Required Banner */}
+      {/* Contextual Review Required Banner */}
       {finding.review_required && (
         <div className="rounded-xl border border-rose-500/40 bg-rose-950/25 p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
@@ -329,7 +329,7 @@ export function FindingDetailPage() {
         </div>
       )}
 
-      {/* US-207: Contextual Data Quality & Analysis Limits Banner */}
+      {/* Contextual Data Quality & Analysis Limits Banner */}
       {finding.warnings && finding.warnings.length > 0 && (
         <DataQualityBanner warnings={finding.warnings} />
       )}
@@ -505,18 +505,18 @@ export function FindingDetailPage() {
         </div>
       </div>
 
-      {/* US-401: Upgrade Candidates & Remediation Targets */}
+      {/* Upgrade Candidates & Remediation Targets */}
       <FindingUpgradeCandidatesSection
         projectId={activeProject?.id ?? finding.project_id}
         findingId={finding.id}
       />
 
-      {/* Dependency Reachability & Interactive Exposure Paths (US-204) */}
+      {/* Dependency Reachability & Interactive Exposure Paths */}
       <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-6 shadow-xl space-y-4">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2 text-sm font-bold text-white">
             <Route className="h-4 w-4 text-sky-400" aria-hidden="true" />
-            <span>Dependency Chain &amp; Graph Reachability (US-204)</span>
+            <span>Dependency Chain &amp; Graph Reachability</span>
           </div>
           <Link
             to="/exposure-paths"
@@ -532,12 +532,12 @@ export function FindingDetailPage() {
         />
       </div>
 
-      {/* US-603: Agent Investigation Traces & Session Audit */}
+      {/* Agent Investigation Traces & Session Audit */}
       <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-6 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2 text-sm font-bold text-white">
             <Bot className="h-4 w-4 text-sky-400" aria-hidden="true" />
-            <span>Agent Investigation Traces (US-603)</span>
+            <span>Agent Investigation Traces</span>
             {findingRuns.length > 0 && (
               <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-[10px] font-mono font-bold text-sky-300">
                 {findingRuns.length} recorded
@@ -632,7 +632,7 @@ export function FindingDetailPage() {
         )}
       </div>
 
-      {/* Embedded Slide-over Trace Drawer (US-603) */}
+      {/* Embedded Slide-over Trace Drawer */}
       <TraceDrawer
         runId={selectedTraceRunId}
         isOpen={isTraceDrawerOpen}

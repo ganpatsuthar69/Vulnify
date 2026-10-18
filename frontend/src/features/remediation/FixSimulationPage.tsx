@@ -222,9 +222,6 @@ export function FixSimulationPage() {
               <FlaskConical className="h-6 w-6 text-sky-400" />
               Fix Simulation
             </h1>
-            <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
-              US-501 &bull; Graph Overlay
-            </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
             Simulate proposed dependency upgrades on an isolated FalkorDB graph overlay. Evaluates cleared findings, residual exposure, and SemVer breaking risk without mutating stored graph state.

@@ -160,9 +160,6 @@ export function InvestigationHistoryPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-white">Investigation History & Stored Traces</h1>
-            <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
-              US-603 &bull; Stored Traces
-            </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
             Persistent audit record of agent reasoning sessions, Cypher tool calls, and grounded decision transcripts.

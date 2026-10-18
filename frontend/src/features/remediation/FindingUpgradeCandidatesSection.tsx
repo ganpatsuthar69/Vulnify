@@ -87,7 +87,7 @@ export function FindingUpgradeCandidatesSection({
         <div className="flex items-center gap-2.5">
           <ArrowUpCircle className="h-5 w-5 text-emerald-400" aria-hidden="true" />
           <div>
-            <h2 className="text-sm font-bold text-white">Suggested Upgrade Targets (US-401)</h2>
+            <h2 className="text-sm font-bold text-white">Suggested Upgrade Targets</h2>
             <p className="text-[11px] text-slate-400">
               Targets derived strictly from upstream advisory fixed versions. Never assumed safe without testing.
             </p>
