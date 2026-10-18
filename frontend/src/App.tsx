@@ -23,7 +23,6 @@ import { GitHubIssuesPage } from '@/features/remediation/GitHubIssuesPage'
 import { AiInvestigationPage } from '@/features/intelligence/AiInvestigationPage'
 import { InvestigationHistoryPage } from '@/features/intelligence/InvestigationHistoryPage'
 import { BenchmarksPage } from '@/features/intelligence/BenchmarksPage'
-import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { ProjectSettingsPage } from '@/features/projects/ProjectSettingsPage'
 import { IntegrationsPage } from '@/features/administration/IntegrationsPage'
 
@@ -69,7 +68,7 @@ export default function App() {
                 <Route path="/benchmarks" element={<BenchmarksPage />} />
 
                 {/* Administration */}
-                <Route path="/projects" element={<ProjectsPage />} />
+                <Route path="/projects" element={<Navigate to="/project-settings" replace />} />
                 <Route path="/project-settings" element={<ProjectSettingsPage />} />
                 <Route path="/integrations" element={<IntegrationsPage />} />
               </Route>

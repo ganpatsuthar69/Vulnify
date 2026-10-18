@@ -5,9 +5,10 @@ import {
   Database,
   Download,
   CheckCircle2,
+  ArrowRight,
 } from 'lucide-react'
+import { Link } from 'react-router'
 import { useProjects } from '@/features/projects/ProjectProvider'
-import { GitHubAdminConfigCard } from '@/features/administration/GitHubAdminConfigCard'
 
 export function ProjectSettingsPage() {
   const { activeProject } = useProjects()
@@ -146,11 +147,22 @@ export function ProjectSettingsPage() {
         </div>
       </div>
 
-      {/* GitHub Integration Admin Configuration (US-506) */}
-      <GitHubAdminConfigCard
-        projectId={activeProject.id}
-        projectName={activeProject.name}
-      />
+      {/* External Integrations Callout */}
+      <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="text-xs font-semibold text-white">External Integrations & Remediation Targets</div>
+          <p className="text-[11px] text-slate-400">
+            Configure GitHub repository tokens, issue targets, and API connectivity in the dedicated Integrations module.
+          </p>
+        </div>
+        <Link
+          to="/integrations"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-200 hover:border-sky-500 hover:text-white transition shrink-0"
+        >
+          <span>Go to Integrations</span>
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
     </div>
   )
 }

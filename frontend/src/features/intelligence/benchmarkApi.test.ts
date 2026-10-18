@@ -165,5 +165,10 @@ export function runBenchmarkApiTests(): boolean {
   return true
 }
 
-// Execute tests at load time in development/test
-runBenchmarkApiTests()
+import { describe, expect, it } from 'vitest'
+
+describe('benchmarkApi', () => {
+  it('validates benchmark API mappings and metrics derivation', () => {
+    expect(runBenchmarkApiTests()).toBe(true)
+  })
+})

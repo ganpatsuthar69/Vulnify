@@ -278,3 +278,48 @@ async def trigger_benchmark_run(req: TriggerBenchmarkRunRequest) -> BenchmarkRun
             detail=f"Benchmark comparison execution failed: {exc}",
         ) from exc
 
+
+from vulnify.benchmarks.graph_path_benchmark import (
+    GraphPathBenchmarkConfig,
+    GraphPathBenchmarkResult,
+    load_latest_graph_path_benchmark,
+    run_graph_path_benchmark,
+)
+
+
+@router.get(
+    "/performance/graph-path",
+    response_model=GraphPathBenchmarkResult,
+    summary="Get latest graph-path query performance benchmark result (US-903)",
+)
+async def get_graph_path_performance_benchmark() -> GraphPathBenchmarkResult:
+    """Retrieve the latest graph-path query P95 performance benchmark result.
+
+    Returns 404 if no benchmark run exists yet.
+    """
+    res = load_latest_graph_path_benchmark()
+    if res is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No graph-path benchmark results found yet. Execute the benchmark first.",
+        )
+    return res
+
+
+@router.post(
+    "/performance/graph-path/run",
+    response_model=GraphPathBenchmarkResult,
+    summary="Trigger graph-path query performance benchmark run (US-903)",
+)
+async def trigger_graph_path_performance_run(
+    config: GraphPathBenchmarkConfig | None = None,
+) -> GraphPathBenchmarkResult:
+    """Execute the graph-path performance benchmark and return verified P95 latency metrics."""
+    try:
+        return run_graph_path_benchmark(config=config)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Graph-path benchmark execution failed: {exc}",
+        ) from exc
+

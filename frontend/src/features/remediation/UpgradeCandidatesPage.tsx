@@ -157,9 +157,10 @@ export function UpgradeCandidatesPage() {
       {/* Filters & Search Bar */}
       <div className="flex flex-col sm:flex-row items-center gap-3">
         <div className="relative flex-1 w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" aria-hidden="true" />
           <input
             type="text"
+            aria-label="Search upgrade candidates"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search by package name, advisory ID, or finding ID..."
@@ -168,8 +169,9 @@ export function UpgradeCandidatesPage() {
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+          <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
           <select
+            aria-label="Filter by fix availability"
             value={fixFilter}
             onChange={(e) => setFixFilter(e.target.value as 'all' | 'available' | 'none')}
             className="rounded-lg border border-slate-800 bg-[#0f1822] px-3 py-2 text-xs text-slate-300 focus:border-sky-500 focus:outline-none"
@@ -180,6 +182,7 @@ export function UpgradeCandidatesPage() {
           </select>
 
           <select
+            aria-label="Filter by SemVer differential"
             value={jumpFilter}
             onChange={(e) => setJumpFilter(e.target.value)}
             className="rounded-lg border border-slate-800 bg-[#0f1822] px-3 py-2 text-xs text-slate-300 focus:border-sky-500 focus:outline-none"

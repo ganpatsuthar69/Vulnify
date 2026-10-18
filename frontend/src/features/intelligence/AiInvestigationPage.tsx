@@ -85,7 +85,7 @@ export function AiInvestigationPage() {
   }, [activeProject])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' })
   }, [messages, isThinking, currentStatusText, activeToolSteps])
 
   // US-603: Load historical run when ?reopen={runId} is provided

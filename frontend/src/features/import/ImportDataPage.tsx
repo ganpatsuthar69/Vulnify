@@ -1,18 +1,37 @@
-import { useState } from 'react'
 import {
   UploadCloud,
   ShieldAlert,
   Cpu,
   AlertCircle,
+  ArrowRight,
+  ArrowLeft,
+  ChevronRight,
 } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router'
 import { useProjects } from '@/features/projects/ProjectProvider'
 import { LockfileImportCard } from '@/features/dependencies/LockfileImportCard'
 import { OsvAdvisoryCard } from '@/features/advisories/OsvAdvisoryCard'
 import { VersionMatchingCard } from '@/features/advisories/VersionMatchingCard'
 
+type IngestionTab = 'lockfile' | 'osv' | 'matching'
+
 export function ImportDataPage() {
   const { activeProject } = useProjects()
-  const [activeTab, setActiveTab] = useState<'all' | 'lockfile' | 'osv' | 'matching'>('all')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab')
+  const activeTab: IngestionTab =
+    rawTab === 'osv' || rawTab === 'matching' ? rawTab : 'lockfile'
+
+  const handleSelectTab = (tab: IngestionTab) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('tab', tab)
+        return next
+      },
+      { replace: true }
+    )
+  }
 
   if (!activeProject) {
     return (
@@ -43,19 +62,8 @@ export function ImportDataPage() {
         <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900/60 p-1 text-xs">
           <button
             type="button"
-            onClick={() => setActiveTab('all')}
-            className={`rounded-md px-3 py-1 font-medium transition-colors ${
-              activeTab === 'all'
-                ? 'bg-sky-500 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            All Stages
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('lockfile')}
-            className={`rounded-md px-3 py-1 font-medium transition-colors ${
+            onClick={() => handleSelectTab('lockfile')}
+            className={`rounded-md px-3.5 py-1.5 font-medium transition-colors ${
               activeTab === 'lockfile'
                 ? 'bg-sky-500 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
@@ -65,10 +73,10 @@ export function ImportDataPage() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('osv')}
-            className={`rounded-md px-3 py-1 font-medium transition-colors ${
+            onClick={() => handleSelectTab('osv')}
+            className={`rounded-md px-3.5 py-1.5 font-medium transition-colors ${
               activeTab === 'osv'
-                ? 'bg-sky-500 text-white shadow-sm'
+                ? 'bg-amber-500 text-slate-950 font-semibold shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -76,10 +84,10 @@ export function ImportDataPage() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('matching')}
-            className={`rounded-md px-3 py-1 font-medium transition-colors ${
+            onClick={() => handleSelectTab('matching')}
+            className={`rounded-md px-3.5 py-1.5 font-medium transition-colors ${
               activeTab === 'matching'
-                ? 'bg-sky-500 text-white shadow-sm'
+                ? 'bg-emerald-500 text-slate-950 font-semibold shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -88,68 +96,185 @@ export function ImportDataPage() {
         </div>
       </div>
 
-      {/* Stage Progression Breadcrumb Guide */}
+      {/* Interactive Stage Progression Stepper */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="flex items-center gap-3 rounded-lg border border-slate-800 bg-[#0f1822] p-3 text-xs">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-sky-500/15 text-sky-400 font-bold shrink-0">
-            1
+        <button
+          type="button"
+          onClick={() => handleSelectTab('lockfile')}
+          className={`flex items-center justify-between gap-3 rounded-lg border p-3.5 text-xs text-left transition ${
+            activeTab === 'lockfile'
+              ? 'border-sky-500/80 bg-sky-950/20 ring-1 ring-sky-500/40 shadow-lg shadow-sky-950/20'
+              : 'border-slate-800 bg-[#0f1822] hover:border-slate-700 hover:bg-slate-900/60'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className={`flex h-7 w-7 items-center justify-center rounded font-bold shrink-0 transition ${
+                activeTab === 'lockfile'
+                  ? 'bg-sky-500 text-white'
+                  : 'bg-sky-500/15 text-sky-400'
+              }`}
+            >
+              1
+            </div>
+            <div>
+              <div className="font-semibold text-white">Parse &amp; Persist Graph</div>
+              <div className="text-[11px] text-slate-400">Upload lockfile / manifest (US-102)</div>
+            </div>
           </div>
-          <div>
-            <div className="font-semibold text-white">Parse &amp; Persist Graph</div>
-            <div className="text-[11px] text-slate-400">Upload lockfile / manifest (US-102)</div>
-          </div>
-        </div>
+          {activeTab === 'lockfile' && (
+            <span className="text-[10px] uppercase font-bold text-sky-400 bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded">
+              Active
+            </span>
+          )}
+        </button>
 
-        <div className="flex items-center gap-3 rounded-lg border border-slate-800 bg-[#0f1822] p-3 text-xs">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-amber-500/15 text-amber-400 font-bold shrink-0">
-            2
+        <button
+          type="button"
+          onClick={() => handleSelectTab('osv')}
+          className={`flex items-center justify-between gap-3 rounded-lg border p-3.5 text-xs text-left transition ${
+            activeTab === 'osv'
+              ? 'border-amber-500/80 bg-amber-950/20 ring-1 ring-amber-500/40 shadow-lg shadow-amber-950/20'
+              : 'border-slate-800 bg-[#0f1822] hover:border-slate-700 hover:bg-slate-900/60'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className={`flex h-7 w-7 items-center justify-center rounded font-bold shrink-0 transition ${
+                activeTab === 'osv'
+                  ? 'bg-amber-500 text-slate-950 font-bold'
+                  : 'bg-amber-500/15 text-amber-400'
+              }`}
+            >
+              2
+            </div>
+            <div>
+              <div className="font-semibold text-white">Ingest OSV Advisories</div>
+              <div className="text-[11px] text-slate-400">Query api.osv.dev batch (US-103)</div>
+            </div>
           </div>
-          <div>
-            <div className="font-semibold text-white">Ingest OSV Advisories</div>
-            <div className="text-[11px] text-slate-400">Query api.osv.dev batch (US-103)</div>
-          </div>
-        </div>
+          {activeTab === 'osv' && (
+            <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
+              Active
+            </span>
+          )}
+        </button>
 
-        <div className="flex items-center gap-3 rounded-lg border border-slate-800 bg-[#0f1822] p-3 text-xs">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-emerald-500/15 text-emerald-400 font-bold shrink-0">
-            3
+        <button
+          type="button"
+          onClick={() => handleSelectTab('matching')}
+          className={`flex items-center justify-between gap-3 rounded-lg border p-3.5 text-xs text-left transition ${
+            activeTab === 'matching'
+              ? 'border-emerald-500/80 bg-emerald-950/20 ring-1 ring-emerald-500/40 shadow-lg shadow-emerald-950/20'
+              : 'border-slate-800 bg-[#0f1822] hover:border-slate-700 hover:bg-slate-900/60'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className={`flex h-7 w-7 items-center justify-center rounded font-bold shrink-0 transition ${
+                activeTab === 'matching'
+                  ? 'bg-emerald-500 text-slate-950 font-bold'
+                  : 'bg-emerald-500/15 text-emerald-400'
+              }`}
+            >
+              3
+            </div>
+            <div>
+              <div className="font-semibold text-white">Ecosystem Matching</div>
+              <div className="text-[11px] text-slate-400">Evaluate SemVer ranges (US-104)</div>
+            </div>
           </div>
-          <div>
-            <div className="font-semibold text-white">Ecosystem Matching</div>
-            <div className="text-[11px] text-slate-400">Evaluate SemVer ranges (US-104)</div>
-          </div>
-        </div>
+          {activeTab === 'matching' && (
+            <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">
+              Active
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* Ingestion Cards */}
-      <div className="space-y-6">
-        {(activeTab === 'all' || activeTab === 'lockfile') && (
-          <div className="space-y-2">
+      {/* Tab-Driven Stage Content */}
+      <div className="space-y-4">
+        {activeTab === 'lockfile' && (
+          <div className="space-y-4">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <UploadCloud className="h-4 w-4 text-sky-400" />
               <span>Stage 1: Multi-Ecosystem Dependency Ingestion (US-102)</span>
             </div>
             <LockfileImportCard project={activeProject} />
+
+            {/* Stage Navigation Footer */}
+            <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-[#0f1822] p-4 text-xs">
+              <span className="text-slate-400">
+                Stage 1 parses manifests/lockfiles and builds dependency nodes in FalkorDB.
+              </span>
+              <button
+                type="button"
+                onClick={() => handleSelectTab('osv')}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-2 font-medium text-white shadow-sm hover:bg-sky-400 transition"
+              >
+                <span>Continue to Stage 2: OSV Advisories</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
 
-        {(activeTab === 'all' || activeTab === 'osv') && (
-          <div className="space-y-2">
+        {activeTab === 'osv' && (
+          <div className="space-y-4">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-amber-400" />
               <span>Stage 2: OSV Advisory Ingestion &amp; Caching (US-103)</span>
             </div>
             <OsvAdvisoryCard project={activeProject} />
+
+            {/* Stage Navigation Footer */}
+            <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-[#0f1822] p-4 text-xs">
+              <button
+                type="button"
+                onClick={() => handleSelectTab('lockfile')}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3.5 py-2 font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to Stage 1: Lockfile</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectTab('matching')}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 font-semibold text-slate-950 shadow-sm hover:bg-amber-400 transition"
+              >
+                <span>Continue to Stage 3: Version Matching</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
 
-        {(activeTab === 'all' || activeTab === 'matching') && (
-          <div className="space-y-2">
+        {activeTab === 'matching' && (
+          <div className="space-y-4">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <Cpu className="h-4 w-4 text-emerald-400" />
               <span>Stage 3: Ecosystem-Aware Version Matching (US-104)</span>
             </div>
             <VersionMatchingCard project={activeProject} />
+
+            {/* Stage Navigation Footer */}
+            <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-[#0f1822] p-4 text-xs">
+              <button
+                type="button"
+                onClick={() => handleSelectTab('osv')}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3.5 py-2 font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to Stage 2: OSV Advisories</span>
+              </button>
+              <Link
+                to="/findings"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-4 py-2 font-semibold text-slate-950 shadow-sm hover:bg-emerald-400 transition"
+              >
+                <span>View Findings &amp; Exposure Paths</span>
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         )}
       </div>

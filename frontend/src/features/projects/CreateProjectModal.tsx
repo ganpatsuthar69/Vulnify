@@ -61,9 +61,10 @@ export function CreateProjectModal({ isOpen, onClose }: CreateProjectModalProps)
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+            aria-label="Close dialog"
+            className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
@@ -102,7 +103,7 @@ export function CreateProjectModal({ isOpen, onClose }: CreateProjectModalProps)
               onChange={(e) => setEcosystem(e.target.value as SupportedEcosystem)}
               className="mt-1.5 block w-full rounded-lg border border-slate-700 bg-[#0b121a] px-3.5 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-50"
             >
-              {capabilities.length > 0 ? (
+              {capabilities && capabilities.length > 0 ? (
                 capabilities.map((cap) => (
                   <option key={cap.id} value={cap.id}>
                     {cap.display_name}

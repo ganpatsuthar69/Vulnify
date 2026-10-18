@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Clock,
   FlaskConical,
-  FolderGit2,
   GitPullRequest,
   History,
   LayoutDashboard,
@@ -94,7 +93,6 @@ const NAV_GROUPS: NavGroup[] = [
   {
     group: 'Administration',
     items: [
-      { name: 'Projects', path: '/projects', icon: FolderGit2 },
       { name: 'Project Settings', path: '/project-settings', icon: Settings },
       { name: 'Integrations', path: '/integrations', icon: Link2 },
     ],

@@ -5,6 +5,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { GitHubAdminConfigCard } from './GitHubAdminConfigCard'
+import { useProjects } from '@/features/projects/ProjectProvider'
 
 interface IntegrationStatus {
   name: string
@@ -16,6 +17,7 @@ interface IntegrationStatus {
 }
 
 export function IntegrationsPage() {
+  const { activeProject } = useProjects()
   const [isChecking, setIsChecking] = useState(false)
   const [lastChecked, setLastChecked] = useState<string>(
     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -173,7 +175,10 @@ export function IntegrationsPage() {
       </div>
 
       {/* GitHub Integration Admin Configuration UI (US-506) */}
-      <GitHubAdminConfigCard />
+      <GitHubAdminConfigCard
+        projectId={activeProject?.id}
+        projectName={activeProject?.name}
+      />
     </div>
   )
 }

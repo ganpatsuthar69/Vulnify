@@ -68,7 +68,7 @@ export function LockfileImportCard({ project }: LockfileImportCardProps) {
   const { capabilities } = useProjects()
 
   // Match ecosystem capability from backend registry
-  const capability = capabilities.find((c) => c.id === project.ecosystem)
+  const capability = capabilities?.find((c) => c.id === project.ecosystem)
   const methods = capability?.supported_import_methods ?? []
 
   const [selectedMethodId, setSelectedMethodId] = useState<string>('')
