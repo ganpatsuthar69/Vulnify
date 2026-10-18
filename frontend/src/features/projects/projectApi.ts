@@ -27,6 +27,12 @@ import type {
   SimulationRequest,
   SimulationResponse,
   SimulationListResponse,
+  GitHubIntegrationStatusResponse,
+  GitHubIssuePreviewRequest,
+  GitHubIssuePreviewResponse,
+  GitHubIssueCreateRequest,
+  GitHubIssueRecordResponse,
+  GitHubIssueListResponse,
 } from './types'
 import { ApiClientError, isMockMode, parseApiError } from '@/shared/api/client'
 import type { ApiClientErrorOptions } from '@/shared/types/api'
@@ -854,43 +860,46 @@ export async function listProjectServices(projectId: string): Promise<ProjectSer
   throw new ProjectApiError('Failed to fetch project services.', { status: response.status })
 }
 
+function getMockFindings(projectId: string): FindingItem[] {
+  return [
+    {
+      id: 'mock-finding-1',
+      project_id: projectId,
+      service_id: `${projectId}:payment-api`,
+      service_name: 'payment-api',
+      advisory_id: 'GHSA-29mw-wpgm-hmr9',
+      advisory_summary: 'Regular Expression Denial of Service (ReDoS) in lodash',
+      source_url: 'https://github.com/advisories/GHSA-29mw-wpgm-hmr9',
+      package_name: 'lodash',
+      ecosystem: 'npm',
+      package_version: '4.17.20',
+      package_version_id: 'npm:lodash@4.17.20',
+      priority: 'High',
+      priority_reasons: [
+        'Advisory severity is High',
+        'Transitive dependency reachable from service (path depth: 2 hops)',
+        'Actionable remediation target available (fixed in >= 4.17.21)',
+      ],
+      scoring_version: 'v1.0.0',
+      status: 'open',
+      path_depth: 2,
+      path_status: 'path_found',
+      match_reason: 'Version 4.17.20 is within affected range (< 4.17.21) for advisory GHSA-29mw-wpgm-hmr9.',
+      reason_code: 'WITHIN_AFFECTED_RANGE',
+      matched_range: '< 4.17.21',
+      fixed_version: '4.17.21',
+      severity: 'HIGH',
+      retrieved_at: Math.floor(Date.now() / 1000) - 3600,
+    },
+  ]
+}
+
 export async function getProjectFindings(
   projectId: string,
   params?: FindingFilters,
 ): Promise<FindingListResponse> {
   if (isMockMode()) {
-    const mockFindings: FindingItem[] = [
-      {
-        id: 'mock-finding-1',
-        project_id: projectId,
-        service_id: `${projectId}:payment-api`,
-        service_name: 'payment-api',
-        advisory_id: 'GHSA-29mw-wpgm-hmr9',
-        advisory_summary: 'Regular Expression Denial of Service (ReDoS) in lodash',
-        source_url: 'https://github.com/advisories/GHSA-29mw-wpgm-hmr9',
-        package_name: 'lodash',
-        ecosystem: 'npm',
-        package_version: '4.17.20',
-        package_version_id: 'npm:lodash@4.17.20',
-        priority: 'High',
-        priority_reasons: [
-          'Advisory severity is High',
-          'Transitive dependency reachable from service (path depth: 2 hops)',
-          'Actionable remediation target available (fixed in >= 4.17.21)',
-        ],
-        scoring_version: 'v1.0.0',
-        status: 'open',
-        path_depth: 2,
-        path_status: 'path_found',
-        match_reason: 'Version 4.17.20 is within affected range (< 4.17.21) for advisory GHSA-29mw-wpgm-hmr9.',
-        reason_code: 'WITHIN_AFFECTED_RANGE',
-        matched_range: '< 4.17.21',
-        fixed_version: '4.17.21',
-        severity: 'HIGH',
-        retrieved_at: Math.floor(Date.now() / 1000) - 3600,
-      },
-    ]
-
+    const mockFindings = getMockFindings(projectId)
     let filtered = [...mockFindings]
     if (params?.service_id) {
       filtered = filtered.filter((f) => f.service_id === params.service_id)
@@ -1527,6 +1536,215 @@ export async function getSimulationDetail(
   await handleErrorResponse(response)
   throw new ProjectApiError('Failed to fetch simulation detail.', { status: response.status })
 }
+
+// =====================================================================
+// US-503 / US-504: GitHub Remediation Issues API
+// =====================================================================
+
+const mockGitHubIssuesStore: Record<string, GitHubIssueRecordResponse[]> = {}
+
+export async function getGitHubStatus(
+  projectId: string,
+): Promise<GitHubIntegrationStatusResponse> {
+  if (isMockMode()) {
+    return {
+      configured: true,
+      default_owner: 'vulnify',
+      default_repo: 'demo-workspace',
+      target_repo: 'vulnify/demo-workspace',
+      api_base_url: 'https://api.github.com',
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/github/status`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as GitHubIntegrationStatusResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch GitHub integration status.', { status: response.status })
+}
+
+export async function previewGitHubIssue(
+  projectId: string,
+  findingId: string,
+  request: GitHubIssuePreviewRequest = {},
+): Promise<GitHubIssuePreviewResponse> {
+  if (isMockMode()) {
+    const mockFindings = getMockFindings(projectId)
+    const finding = mockFindings.find((f: FindingItem) => f.id === findingId)
+    const pkg = finding?.package_name || 'lodash'
+    const cur = finding?.package_version || '4.17.20'
+    const target = request.target_version || finding?.fixed_version || '4.17.21'
+    const title =
+      request.title_override ||
+      `[Security] Remediate ${pkg}@${cur} (${finding?.advisory_id || findingId})`
+    const body =
+      request.body_override ||
+      `## Vulnerability Remediation Request\n\n` +
+      `### Target Package\n` +
+      `- **Package:** \`${pkg}\`\n` +
+      `- **Installed Version:** \`${cur}\`\n` +
+      `- **Target Fix Version:** \`${target}\`\n` +
+      `- **Advisory Reference:** ${finding?.advisory_id || findingId}\n\n` +
+      `### Reachability Evidence\n` +
+      `- **Exposure:** Confirmed reachability path in service dependency graph.\n\n` +
+      `*Architectural exposure indicates structural reachability; it does not constitute proof of active runtime exploitability.*`
+
+    const planHash = `plan_sha256_${Math.random().toString(16).slice(2, 10)}${Math.random().toString(16).slice(2, 10)}`
+    return {
+      project_id: projectId,
+      finding_id: findingId,
+      advisory_id: finding?.advisory_id || 'GHSA-mock',
+      package_name: pkg,
+      current_version: cur,
+      target_version: target,
+      ecosystem: finding?.ecosystem || 'npm',
+      service_name: finding?.service_name || 'order-api',
+      target_repo: request.target_repo || 'vulnify/demo-workspace',
+      title,
+      body,
+      plan_hash: planHash,
+      can_submit: true,
+      configuration_warning: null,
+      generated_at: Math.floor(Date.now() / 1000),
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings/${encodeURIComponent(findingId)}/github-issues/preview`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'vulnify',
+      },
+      body: JSON.stringify(request),
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as GitHubIssuePreviewResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to generate issue preview.', { status: response.status })
+}
+
+export async function createGitHubIssue(
+  projectId: string,
+  findingId: string,
+  request: GitHubIssueCreateRequest,
+): Promise<GitHubIssueRecordResponse> {
+  if (isMockMode()) {
+    if (!request.confirmed) {
+      throw new ProjectApiError("Issue creation requires explicit human approval ('confirmed': true).", {
+        status: 400,
+      })
+    }
+    const store = mockGitHubIssuesStore[projectId] || []
+    const existing = store.find((i) => i.plan_hash === request.plan_hash)
+    if (existing) {
+      return {
+        ...existing,
+        is_duplicate: true,
+        message: `Duplicate creation prevented. Plan hash ${request.plan_hash.slice(0, 16)} already filed.`,
+      }
+    }
+    const issueNumber = 100 + store.length + 1
+    const record: GitHubIssueRecordResponse = {
+      id: `gh-issue-${Date.now()}`,
+      project_id: projectId,
+      finding_id: findingId,
+      target_repo: request.target_repo,
+      issue_number: issueNumber,
+      issue_url: `https://github.com/${request.target_repo}/issues/${issueNumber}`,
+      title: request.title,
+      plan_hash: request.plan_hash,
+      created_by: 'admin@vulnify.local',
+      state: 'open',
+      created_at: Math.floor(Date.now() / 1000),
+      is_duplicate: false,
+      message: `GitHub issue #${issueNumber} created successfully.`,
+    }
+    mockGitHubIssuesStore[projectId] = [record, ...store]
+    return record
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/findings/${encodeURIComponent(findingId)}/github-issues`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'vulnify',
+      },
+      body: JSON.stringify(request),
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as GitHubIssueRecordResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to create GitHub issue.', { status: response.status })
+}
+
+export async function getProjectGitHubIssues(
+  projectId: string,
+): Promise<GitHubIssueListResponse> {
+  if (isMockMode()) {
+    const list = mockGitHubIssuesStore[projectId] || []
+    return {
+      items: list,
+      total: list.length,
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/github-issues`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as GitHubIssueListResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch project GitHub issues.', { status: response.status })
+}
+
 
 
 

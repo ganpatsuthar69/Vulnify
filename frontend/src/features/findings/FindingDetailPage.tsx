@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   ArrowLeft,
+  ArrowRight,
   ShieldAlert,
   ExternalLink,
   Loader2,
@@ -10,24 +11,36 @@ import {
   AlertTriangle,
   RefreshCw,
   Clock,
+  Bot,
+  Database,
+  RotateCcw,
 } from 'lucide-react'
-import { Link, useParams } from 'react-router'
+import { Link, useParams, useNavigate } from 'react-router'
 import { useProjects } from '@/features/projects/ProjectProvider'
 import { getProjectFindingDetail, ProjectApiError } from '@/features/projects/projectApi'
 import type { FindingDetail } from '@/features/projects/types'
 import { DependencyPathVisualizer } from '@/features/graph/DependencyPathVisualizer'
 import { DataQualityBanner } from '@/shared/components/DataQualityBanner'
 import { FindingUpgradeCandidatesSection } from '@/features/remediation/FindingUpgradeCandidatesSection'
+import { getAgentRunsByFinding, type AgentRunSummary } from '@/features/intelligence/agentApi'
+import { TraceDrawer } from '@/features/intelligence/TraceDrawer'
 
 export function FindingDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { activeProject } = useProjects()
+  const navigate = useNavigate()
 
   const [finding, setFinding] = useState<FindingDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isNotFound, setIsNotFound] = useState(false)
   const [reloadTrigger, setReloadTrigger] = useState(0)
+
+  // Stored Agent Traces (US-603)
+  const [findingRuns, setFindingRuns] = useState<AgentRunSummary[]>([])
+  const [isLoadingRuns, setIsLoadingRuns] = useState(false)
+  const [selectedTraceRunId, setSelectedTraceRunId] = useState<string | null>(null)
+  const [isTraceDrawerOpen, setIsTraceDrawerOpen] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -64,6 +77,28 @@ export function FindingDetailPage() {
     }
 
     void fetchFinding()
+
+    return () => {
+      isMounted = false
+    }
+  }, [activeProject, id, reloadTrigger])
+
+  useEffect(() => {
+    let isMounted = true
+    if (!activeProject || !id) return
+
+    setIsLoadingRuns(true)
+    getAgentRunsByFinding(activeProject.id, id)
+      .then((runs) => {
+        if (isMounted) setFindingRuns(runs)
+      })
+      .catch((err) => {
+        console.warn('Failed to load agent runs for finding:', err)
+        if (isMounted) setFindingRuns([])
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingRuns(false)
+      })
 
     return () => {
       isMounted = false
@@ -210,6 +245,27 @@ export function FindingDetailPage() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              if (findingRuns.length > 0) {
+                setSelectedTraceRunId(findingRuns[0]!.id)
+                setIsTraceDrawerOpen(true)
+              } else {
+                navigate('/investigation')
+              }
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-slate-600"
+            title={
+              findingRuns.length > 0
+                ? `Inspect ${findingRuns.length} stored agent traces for this finding`
+                : 'No agent traces found for this finding yet'
+            }
+          >
+            <Database className="h-3.5 w-3.5 text-sky-400" aria-hidden="true" />
+            <span>Investigation Traces ({findingRuns.length})</span>
+          </button>
+
           <Link
             to={`/github-issues?finding=${encodeURIComponent(finding.id)}`}
             className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-sky-400 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500"
@@ -434,6 +490,114 @@ export function FindingDetailPage() {
           findingId={finding.id}
         />
       </div>
+
+      {/* US-603: Agent Investigation Traces & Session Audit */}
+      <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-6 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2 text-sm font-bold text-white">
+            <Bot className="h-4 w-4 text-sky-400" aria-hidden="true" />
+            <span>Agent Investigation Traces (US-603)</span>
+            {findingRuns.length > 0 && (
+              <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-[10px] font-mono font-bold text-sky-300">
+                {findingRuns.length} recorded
+              </span>
+            )}
+          </div>
+          <Link
+            to="/investigation"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors"
+          >
+            <span>Ask Agent New Question</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+
+        {isLoadingRuns ? (
+          <div className="flex items-center justify-center p-8 text-xs text-slate-400 gap-2">
+            <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+            <span>Checking for recorded agent investigation traces...</span>
+          </div>
+        ) : findingRuns.length === 0 ? (
+          <div className="rounded-lg border border-slate-800/80 bg-[#0b121a] p-5 text-center text-xs text-slate-400 space-y-2">
+            <Database className="h-6 w-6 text-slate-600 mx-auto" />
+            <p className="font-medium text-slate-300">No agent investigation runs recorded for this finding yet.</p>
+            <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+              When the AI security agent investigates exposure paths or remediation options referencing this finding, its full parameterized Cypher trace and decision rationale are saved here.
+            </p>
+            <div className="pt-2">
+              <Link
+                to={`/investigation`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/15 border border-sky-500/30 px-3 py-1.5 text-xs font-semibold text-sky-300 hover:bg-sky-500/25 transition-colors"
+              >
+                <Bot className="h-3.5 w-3.5" />
+                <span>Investigate with Agent</span>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-400">
+              The following AI agent investigation sessions analyzed or referenced this finding. Inspect the execution trace to verify parameterized Cypher queries, tool outputs, and reasoning steps.
+            </p>
+            <div className="divide-y divide-slate-800 rounded-lg border border-slate-800 bg-[#0b121a] overflow-hidden">
+              {findingRuns.map((r) => (
+                <div
+                  key={r.id}
+                  className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-800/20 transition-colors"
+                >
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-sky-400 font-semibold">{r.id.substring(0, 16)}...</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase bg-slate-800 text-slate-300">
+                        {r.status}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        {r.tool_call_count} step{r.tool_call_count === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-200 truncate font-medium" title={r.prompt}>
+                      "{r.prompt}"
+                    </p>
+                    <div className="text-[10px] text-slate-500 font-mono">
+                      {formatRetrievedDate(r.started_at)}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTraceRunId(r.id)
+                        setIsTraceDrawerOpen(true)
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors"
+                    >
+                      <Database className="h-3.5 w-3.5 text-sky-400" />
+                      <span>View Trace</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/investigation?reopen=${encodeURIComponent(r.id)}`)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300 hover:bg-sky-500/20 transition-colors"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>Reopen in Chat</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Embedded Slide-over Trace Drawer (US-603) */}
+      <TraceDrawer
+        runId={selectedTraceRunId}
+        isOpen={isTraceDrawerOpen}
+        onClose={() => setIsTraceDrawerOpen(false)}
+        onReopenRun={(run) => navigate(`/investigation?reopen=${encodeURIComponent(run.id)}`)}
+      />
     </div>
   )
 }

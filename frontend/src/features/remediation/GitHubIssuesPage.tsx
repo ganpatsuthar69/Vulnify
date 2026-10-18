@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useSearchParams } from 'react-router'
 import {
   GitPullRequest,
   CheckCircle2,
@@ -8,146 +9,208 @@ import {
   Check,
   RefreshCw,
   AlertCircle,
+  ExternalLink,
+  ShieldAlert,
+  AlertTriangle,
+  FileText,
+  Clock,
+  Layers,
 } from 'lucide-react'
 import { useProjects } from '@/features/projects/ProjectProvider'
-import { getProjectVulnerabilities } from '@/features/projects/projectApi'
-import type { VulnerabilityFinding } from '@/features/projects/types'
-
-// Simple deterministic hash simulation for preview plan integrity (US-503)
-function computePlanHash(content: string): string {
-  let hash = 0
-  for (let i = 0; i < content.length; i++) {
-    const char = content.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash |= 0 // Convert to 32bit integer
-  }
-  const hex = Math.abs(hash).toString(16).padStart(8, '0')
-  return `plan_sha256_${hex}f89e2b1`
-}
-
-interface IssueRecord {
-  id: string
-  title: string
-  planHash: string
-  createdAt: string
-  status: 'preview_only' | 'simulated_approval'
-  targetRepo: string
-}
+import {
+  getProjectFindings,
+  getGitHubStatus,
+  previewGitHubIssue,
+  createGitHubIssue,
+  getProjectGitHubIssues,
+  ProjectApiError,
+} from '@/features/projects/projectApi'
+import type {
+  FindingItem,
+  GitHubIntegrationStatusResponse,
+  GitHubIssuePreviewResponse,
+  GitHubIssueRecordResponse,
+} from '@/features/projects/types'
 
 export function GitHubIssuesPage() {
   const { activeProject } = useProjects()
-  const [findings, setFindings] = useState<VulnerabilityFinding[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
 
-  // Selection
-  const [selectedFindingId, setSelectedFindingId] = useState<string>('')
-  const [issueTitle, setIssueTitle] = useState('')
-  const [issueNotes, setIssueNotes] = useState('')
+  const queryFinding = searchParams.get('finding') || ''
+  const queryTarget = searchParams.get('target') || ''
+  const querySimId = searchParams.get('simId') || ''
+
+  // Data states
+  const [findings, setFindings] = useState<FindingItem[]>([])
+  const [isLoadingFindings, setIsLoadingFindings] = useState(false)
+  const [findingsError, setFindingsError] = useState<string | null>(null)
+
+  const [integrationStatus, setIntegrationStatus] = useState<GitHubIntegrationStatusResponse | null>(null)
+  const [issueHistory, setIssueHistory] = useState<GitHubIssueRecordResponse[]>([])
+
+  // Form selections
+  const [selectedFindingId, setSelectedFindingId] = useState<string>(queryFinding)
+  const [targetVersion, setTargetVersion] = useState<string>(queryTarget)
+  const [customTitle, setCustomTitle] = useState<string>('')
   const [hasApproved, setHasApproved] = useState(false)
-  const [actionMessage, setActionMessage] = useState<string | null>(null)
 
-  // Audit trail of prepared/approved issues
-  const [issueHistory, setIssueHistory] = useState<IssueRecord[]>([])
+  // Preview state
+  const [preview, setPreview] = useState<GitHubIssuePreviewResponse | null>(null)
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
-  const loadFindings = useCallback(async (projectId: string) => {
-    setIsLoading(true)
-    setError(null)
+  // Submission state
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitResult, setSubmitResult] = useState<GitHubIssueRecordResponse | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // 1. Load integration status and history
+  const loadStatusAndHistory = useCallback(async (projectId: string) => {
     try {
-      const data = await getProjectVulnerabilities(projectId)
-      setFindings(data)
-      if (data.length > 0) {
-        setSelectedFindingId(data[0]!.id)
-      }
+      const [status, historyRes] = await Promise.all([
+        getGitHubStatus(projectId),
+        getProjectGitHubIssues(projectId),
+      ])
+      setIntegrationStatus(status)
+      setIssueHistory(historyRes.items)
     } catch {
-      setError('Failed to load project findings.')
-    } finally {
-      setIsLoading(false)
+      // Non-blocking for status
     }
   }, [])
+
+  // 2. Load findings list
+  const loadFindings = useCallback(async (projectId: string) => {
+    setIsLoadingFindings(true)
+    setFindingsError(null)
+    try {
+      const res = await getProjectFindings(projectId, { page_size: 100 })
+      setFindings(res.items)
+      if (res.items.length > 0) {
+        if (queryFinding && res.items.some((f) => f.id === queryFinding)) {
+          setSelectedFindingId(queryFinding)
+        } else if (!selectedFindingId || !res.items.some((f) => f.id === selectedFindingId)) {
+          setSelectedFindingId(res.items[0]!.id)
+        }
+      }
+    } catch {
+      setFindingsError('Failed to load project findings.')
+    } finally {
+      setIsLoadingFindings(false)
+    }
+  }, [queryFinding, selectedFindingId])
 
   useEffect(() => {
     if (activeProject) {
       void loadFindings(activeProject.id)
+      void loadStatusAndHistory(activeProject.id)
     } else {
       setFindings([])
+      setIssueHistory([])
+      setIntegrationStatus(null)
+      setPreview(null)
     }
-  }, [activeProject, loadFindings])
+  }, [activeProject, loadFindings, loadStatusAndHistory])
 
+  // Current selected finding item
   const selectedFinding = useMemo(() => {
     return findings.find((f) => f.id === selectedFindingId) || null
   }, [findings, selectedFindingId])
 
-  // Update default title when selected finding changes
+  // Sync initial target version from query param or finding fixed version
   useEffect(() => {
-    if (selectedFinding) {
-      setIssueTitle(
-        `[Security] Remediation for ${selectedFinding.package_name}@${selectedFinding.package_version} (${selectedFinding.id})`,
-      )
-      setHasApproved(false)
-      setActionMessage(null)
+    if (queryTarget) {
+      setTargetVersion(queryTarget)
+    } else if (selectedFinding?.fixed_version) {
+      setTargetVersion(selectedFinding.fixed_version)
     }
-  }, [selectedFinding])
+  }, [queryTarget, selectedFinding])
 
-  // Reset approval checkbox if title changes (US-503 acceptance criteria)
+  // 3. Fetch Preview from Backend
+  const fetchPreview = useCallback(async (titleOverrideVal?: string) => {
+    if (!activeProject || !selectedFindingId) return
+
+    setIsPreviewLoading(true)
+    setPreviewError(null)
+    try {
+      const prevData = await previewGitHubIssue(activeProject.id, selectedFindingId, {
+        title_override: titleOverrideVal !== undefined ? titleOverrideVal : customTitle || undefined,
+        target_version: targetVersion || undefined,
+        target_repo: integrationStatus?.target_repo || undefined,
+      })
+      setPreview(prevData)
+      if (titleOverrideVal === undefined && !customTitle) {
+        setCustomTitle(prevData.title)
+      }
+    } catch (err) {
+      const msg = err instanceof ProjectApiError ? err.message : 'Failed to generate issue preview.'
+      setPreviewError(msg)
+    } finally {
+      setIsPreviewLoading(false)
+    }
+  }, [activeProject, selectedFindingId, customTitle, targetVersion, integrationStatus])
+
+  // Refresh preview whenever finding selection or target version changes
+  useEffect(() => {
+    if (activeProject && selectedFindingId) {
+      setCustomTitle('')
+      setHasApproved(false)
+      setSubmitResult(null)
+      setSubmitError(null)
+      void fetchPreview('')
+    }
+  }, [activeProject, selectedFindingId, targetVersion, fetchPreview])
+
+  // Handle title edit: reset approval checkbox immediately (US-503 criteria)
   const handleTitleChange = (newTitle: string) => {
-    setIssueTitle(newTitle)
+    setCustomTitle(newTitle)
     setHasApproved(false)
   }
 
-  // Generate structured markdown issue body (Never copies unquoted raw advisory text - US-503/US-604)
-  const structuredIssueBody = useMemo(() => {
-    if (!selectedFinding) return ''
+  // Update preview when user finishes editing title (blur or click)
+  const handleUpdateTitlePreview = () => {
+    setHasApproved(false)
+    void fetchPreview(customTitle)
+  }
 
-    return `## Vulnerability Remediation Request
+  // 4. Approve and Submit (US-504)
+  const handleApproveAndSubmit = async () => {
+    if (!activeProject || !selectedFindingId || !preview || !hasApproved) return
 
-### Target Package
-- **Package:** \`${selectedFinding.package_name}\`
-- **Installed Version:** \`${selectedFinding.package_version}\`
-- **Ecosystem:** \`${selectedFinding.ecosystem}\`
-- **Advisory Reference:** [${selectedFinding.id}](${selectedFinding.source_url || `https://osv.dev/vulnerability/${selectedFinding.id}`})
-- **Severity Rating:** **${selectedFinding.severity}**
+    setIsSubmitting(true)
+    setSubmitError(null)
+    setSubmitResult(null)
 
-### Graph Evidence & Reachability
-- **Architecture Exposure:** Detected via FalkorDB project dependency traversal
-- **Match Status:** \`${selectedFinding.match_status}\`
-- **Evaluation Fingerprint:** \`${selectedFinding.fingerprint}\`
-- **Match Reason:** ${selectedFinding.match_reason}
+    try {
+      const created = await createGitHubIssue(activeProject.id, selectedFindingId, {
+        plan_hash: preview.plan_hash,
+        title: preview.title,
+        body: preview.body,
+        target_repo: preview.target_repo,
+        target_version: preview.target_version,
+        confirmed: true,
+      })
 
-### Remediation Recommendation
-${
-  selectedFinding.fixed_version
-    ? `- **Recommended Target Version:** Upgrade to \`${selectedFinding.fixed_version}\` or higher.`
-    : `- **Recommended Target Version:** No upstream fixed version published yet. Evaluate alternative packages or network isolation.`
-}
-
-${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
----
-*Generated by Vulnify Graph-Powered Security Agent. Architectural exposure does not constitute proof of runtime exploitability.*`
-  }, [selectedFinding, issueNotes])
-
-  // Compute plan hash bound to the preview
-  const planHash = useMemo(() => {
-    return computePlanHash(`${activeProject?.id || ''}_${issueTitle}_${structuredIssueBody}`)
-  }, [activeProject, issueTitle, structuredIssueBody])
-
-  const handleApproveAndSubmit = () => {
-    if (!hasApproved) return
-
-    // In accordance with API contract & honesty rules: A mock approval must never pretend a real GitHub issue was created!
-    const newRecord: IssueRecord = {
-      id: `preview-${Date.now().toString().slice(-4)}`,
-      title: issueTitle,
-      planHash,
-      createdAt: new Date().toLocaleTimeString(),
-      status: 'simulated_approval',
-      targetRepo: 'github.com/vulnify/demo-workspace',
+      setSubmitResult(created)
+      // Refresh audit history
+      const historyRes = await getProjectGitHubIssues(activeProject.id)
+      setIssueHistory(historyRes.items)
+    } catch (err) {
+      if (err instanceof ProjectApiError) {
+        if (err.status === 403) {
+          setSubmitError(
+            'Permission denied by GitHub API. Ensure the server token has "Issues: Read & Write" permission for this repository.',
+          )
+        } else if (err.status === 429) {
+          setSubmitError('GitHub API rate limit exceeded. Please wait a few moments before retrying.')
+        } else {
+          setSubmitError(err.message)
+        }
+      } else {
+        setSubmitError('An unexpected network error occurred while creating the issue.')
+      }
+    } finally {
+      setIsSubmitting(false)
     }
-
-    setIssueHistory((prev) => [newRecord, ...prev])
-    setActionMessage(
-      `Plan approved with hash ${planHash.slice(0, 16)}... Note: In this environment, live GitHub API writes are gated by team authorization. Plan is recorded in local audit history without polluting live repositories.`,
-    )
   }
 
   return (
@@ -162,20 +225,41 @@ ${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            Preview structured remediation plans with cryptographic plan-hash binding and mandatory human approval gating.
+            Cryptographically bound issue previews with mandatory human approval gating before real GitHub issue creation.
           </p>
         </div>
 
         <button
           type="button"
-          onClick={() => activeProject && void loadFindings(activeProject.id)}
-          disabled={isLoading || !activeProject}
+          onClick={() => {
+            if (activeProject) {
+              void loadFindings(activeProject.id)
+              void loadStatusAndHistory(activeProject.id)
+            }
+          }}
+          disabled={isLoadingFindings || !activeProject}
           className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-slate-700 hover:bg-slate-800 disabled:opacity-50"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh Findings
+          <RefreshCw className={`h-3.5 w-3.5 ${isLoadingFindings ? 'animate-spin' : ''}`} />
+          Refresh
         </button>
       </div>
+
+      {/* Unconfigured Token Warning (Honest Configuration State) */}
+      {integrationStatus && !integrationStatus.configured && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" aria-hidden="true" />
+            <div className="space-y-1">
+              <span className="font-semibold text-white">GitHub Integration Token Missing:</span>
+              <p className="text-amber-200/90 leading-relaxed">
+                The backend <code className="font-mono text-amber-300">GITHUB_TOKEN</code> environment variable is not configured.
+                Issue preview and plan hashing are fully operational, but creating issues on GitHub will fail closed until an administrator configures the token.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Safety & CSRF Banner */}
       <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 text-xs text-sky-200">
@@ -184,13 +268,28 @@ ${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
           <div className="space-y-1">
             <span className="font-semibold text-white">Human Approval Gate & CSRF Integrity:</span>
             <p className="text-sky-200/90 leading-relaxed">
-              Every remediation issue requires explicit human approval bound to a cryptographic plan hash (US-503).
+              Every remediation issue requires explicit human approval bound to a SHA-256 cryptographic plan hash (US-503).
               The backend requires strict CSRF verification (<code className="font-mono text-sky-300">X-Requested-With: vulnify</code>).
-              Per Vulnify safety policy, untrusted advisory markdown is never injected raw into issue tickets.
+              Per Vulnify safety policy, raw untrusted advisory markdown is never injected unquoted into issue tickets.
             </p>
           </div>
         </div>
       </div>
+
+      {querySimId && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-emerald-400 shrink-0" />
+            <span>
+              Pre-filled from Fix Simulation <code className="font-mono">{querySimId.slice(0, 8)}</code>
+              {queryTarget ? ` with target version ${queryTarget}` : ''}.
+            </span>
+          </div>
+          <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded">
+            Simulation Linked
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Finding Selector & Draft Form */}
@@ -206,15 +305,15 @@ ${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
                 Target Finding for Issue
               </label>
-              {isLoading ? (
+              {isLoadingFindings ? (
                 <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-400" />
                   Loading findings...
                 </div>
-              ) : error ? (
+              ) : findingsError ? (
                 <div className="flex items-center gap-2 text-xs text-red-400 py-2">
                   <AlertCircle className="h-4 w-4" />
-                  <span>{error}</span>
+                  <span>{findingsError}</span>
                 </div>
               ) : findings.length === 0 ? (
                 <div className="text-xs text-slate-400 italic">No findings available in active project.</div>
@@ -226,41 +325,54 @@ ${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
                 >
                   {findings.map((f) => (
                     <option key={f.id} value={f.id}>
-                      {f.package_name}@{f.package_version} — {f.id} ({f.severity})
+                      {f.package_name}@{f.package_version} — {f.advisory_id} ({f.priority})
                     </option>
                   ))}
                 </select>
               )}
             </div>
 
-            {/* Issue Title Input */}
+            {/* Target Version Input */}
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Issue Title <span className="text-slate-500">(Editing resets approval hash)</span>
+                Target Remediation Version <span className="text-slate-500">(Optional)</span>
               </label>
               <input
                 type="text"
-                value={issueTitle}
-                onChange={(e) => handleTitleChange(e.target.value)}
-                placeholder="Issue title..."
+                value={targetVersion}
+                onChange={(e) => {
+                  setTargetVersion(e.target.value)
+                  setHasApproved(false)
+                }}
+                onBlur={() => void fetchPreview()}
+                placeholder="e.g. 4.17.21"
                 className="w-full rounded-lg border border-slate-800 bg-[#0b121a] px-3 py-2 text-xs text-slate-200 focus:border-sky-500 focus:outline-none"
               />
             </div>
 
-            {/* Operator Notes */}
+            {/* Issue Title Input */}
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Triage Notes or Service Context
-              </label>
-              <textarea
-                rows={3}
-                value={issueNotes}
-                onChange={(e) => {
-                  setIssueNotes(e.target.value)
-                  setHasApproved(false)
-                }}
-                placeholder="Optional notes for the engineering team..."
-                className="w-full rounded-lg border border-slate-800 bg-[#0b121a] p-3 text-xs text-slate-200 focus:border-sky-500 focus:outline-none"
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-slate-300">
+                  Issue Title <span className="text-slate-500">(Editing resets approval hash)</span>
+                </label>
+                {customTitle !== preview?.title && (
+                  <button
+                    type="button"
+                    onClick={handleUpdateTitlePreview}
+                    className="text-[11px] text-sky-400 hover:text-sky-300 font-medium"
+                  >
+                    Recompute Hash &rarr;
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={customTitle}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                onBlur={handleUpdateTitlePreview}
+                placeholder="Issue title..."
+                className="w-full rounded-lg border border-slate-800 bg-[#0b121a] px-3 py-2 text-xs text-slate-200 focus:border-sky-500 focus:outline-none"
               />
             </div>
 
@@ -270,8 +382,8 @@ ${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
                 Target Repository (US-506)
               </span>
               <div className="flex items-center justify-between text-slate-300 font-mono">
-                <span>vulnify/demo-workspace</span>
-                <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">Default</span>
+                <span>{preview?.target_repo || integrationStatus?.target_repo || 'vulnify/demo-workspace'}</span>
+                <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">Configured</span>
               </div>
             </div>
 
@@ -282,12 +394,15 @@ ${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
                   type="checkbox"
                   checked={hasApproved}
                   onChange={(e) => setHasApproved(e.target.checked)}
-                  disabled={!selectedFinding}
+                  disabled={!preview || isPreviewLoading || !preview.can_submit}
                   className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-800 text-sky-500 focus:ring-sky-500 focus:ring-offset-0 disabled:opacity-50"
                 />
                 <span className="text-xs text-slate-300 leading-snug">
-                  I have reviewed the structured preview, verified the remediation target, and explicitly approve
-                  filing this issue under plan hash <code className="font-mono text-sky-400">{planHash.slice(0, 14)}...</code>
+                  I have reviewed the structured preview, verified the reachability evidence and remediation target,
+                  and explicitly approve filing this issue under plan hash{' '}
+                  <code className="font-mono text-sky-400">
+                    {preview?.plan_hash ? `${preview.plan_hash.slice(0, 16)}...` : 'pending preview'}
+                  </code>
                 </span>
               </label>
             </div>
@@ -295,18 +410,58 @@ ${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
             {/* Submit Button */}
             <button
               type="button"
-              disabled={!hasApproved || !selectedFinding}
-              onClick={handleApproveAndSubmit}
+              disabled={!hasApproved || isSubmitting || !preview || !preview.can_submit}
+              onClick={() => void handleApproveAndSubmit()}
               className="w-full flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <CheckCircle2 className="h-4 w-4" />
-              Approve & Create GitHub Issue
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating Issue on GitHub...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Approve & Create GitHub Issue
+                </>
+              )}
             </button>
 
-            {actionMessage && (
-              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300 flex items-start gap-2">
-                <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                <p>{actionMessage}</p>
+            {/* Error Notification */}
+            {submitError && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300 flex items-start gap-2">
+                <ShieldAlert className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                <p>{submitError}</p>
+              </div>
+            )}
+
+            {/* Success / Duplicate Notification */}
+            {submitResult && (
+              <div
+                className={`rounded-lg border p-4 text-xs space-y-2 ${
+                  submitResult.is_duplicate
+                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+                    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-semibold">
+                  <Check className="h-4 w-4 text-emerald-400 shrink-0" />
+                  <span>
+                    {submitResult.is_duplicate ? 'Duplicate Issue Prevented' : 'GitHub Issue Created Successfully'}
+                  </span>
+                </div>
+                <p className="text-slate-300 text-[11px]">{submitResult.message}</p>
+                <div className="pt-1">
+                  <a
+                    href={submitResult.issue_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 font-semibold text-sky-400 hover:text-sky-300 underline"
+                  >
+                    Open Issue #{submitResult.issue_number} on GitHub ({submitResult.target_repo})
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
               </div>
             )}
           </div>
@@ -317,6 +472,7 @@ ${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
           <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-5 shadow-xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
               <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-sky-400" />
                 <h2 className="text-sm font-semibold text-white">Structured Issue Preview</h2>
                 <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-mono text-slate-400">
                   Markdown
@@ -325,18 +481,34 @@ ${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
 
               {/* Plan Hash Display */}
               <div className="flex items-center gap-1.5 font-mono text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/20 px-2.5 py-1 rounded">
-                <Hash className="h-3 w-3 text-sky-400" />
-                <span>{planHash}</span>
+                <Hash className="h-3 w-3 text-sky-400 shrink-0" />
+                <span className="truncate max-w-[240px]">
+                  {preview ? preview.plan_hash : 'no preview'}
+                </span>
               </div>
             </div>
 
             {/* Rendered Preview Box */}
             <div className="rounded-lg border border-slate-800 bg-[#0b121a] p-4 font-mono text-xs text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[420px] overflow-y-auto">
-              {structuredIssueBody || 'Select a finding to preview remediation issue.'}
+              {isPreviewLoading ? (
+                <div className="flex items-center justify-center py-12 text-slate-400 gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+                  <span>Generating authoritative preview & SHA-256 plan hash...</span>
+                </div>
+              ) : previewError ? (
+                <div className="text-red-400 py-4 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{previewError}</span>
+                </div>
+              ) : preview ? (
+                preview.body
+              ) : (
+                'Select a finding to preview remediation issue.'
+              )}
             </div>
 
-            <div className="text-[11px] text-slate-500 flex items-center justify-between">
-              <span>* Preview generated from verified FalkorDB graph evidence.</span>
+            <div className="text-[11px] text-slate-500 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <span>* Preview generated from verified FalkorDB graph reachability evidence.</span>
               <span className="text-slate-400">Gated by US-504 approval protocol</span>
             </div>
           </div>
@@ -344,26 +516,39 @@ ${issueNotes ? `### Operator Context & Notes\n${issueNotes}\n` : ''}
           {/* Issue Audit Trail (US-505) */}
           <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-5 shadow-xl space-y-3">
             <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <span>Action History & Approved Plans (US-505)</span>
+              <Clock className="h-3.5 w-3.5 text-sky-400" />
+              <span>Project Issue Action History (US-505)</span>
             </h3>
 
             {issueHistory.length === 0 ? (
               <div className="text-xs text-slate-500 italic py-2">
-                No issues prepared or approved in this session yet.
+                No issues prepared or created for this project yet.
               </div>
             ) : (
-              <div className="divide-y divide-slate-800">
+              <div className="divide-y divide-slate-800 max-h-60 overflow-y-auto">
                 {issueHistory.map((rec) => (
-                  <div key={rec.id} className="py-2.5 flex items-center justify-between text-xs">
-                    <div>
-                      <div className="font-medium text-slate-200">{rec.title}</div>
-                      <div className="font-mono text-[10px] text-slate-500">
-                        {rec.planHash} &bull; {rec.createdAt}
+                  <div key={rec.id} className="py-2.5 flex items-center justify-between text-xs gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-200 truncate">{rec.title}</div>
+                      <div className="font-mono text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
+                        <span className="truncate max-w-[120px]">{rec.plan_hash}</span>
+                        <span>&bull;</span>
+                        <span>#{rec.issue_number}</span>
+                        <span>&bull;</span>
+                        <span>{new Date(rec.created_at * 1000).toLocaleString()}</span>
                       </div>
                     </div>
-                    <span className="rounded bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-[10px] font-medium text-sky-300">
-                      Approved
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <a
+                        href={rec.issue_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded bg-sky-500/15 border border-sky-500/30 px-2 py-1 text-[11px] font-medium text-sky-300 hover:bg-sky-500/25 transition"
+                      >
+                        GitHub #{rec.issue_number}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
                   </div>
                 ))}
               </div>

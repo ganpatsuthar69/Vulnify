@@ -42,6 +42,37 @@ class Settings(BaseSettings):
     OSV_MAX_CONCURRENT_REQUESTS: int = 5
     OSV_BATCH_SIZE: int = 100
 
+    # GitHub Integration Configuration (US-503 / US-504)
+    GITHUB_API_BASE_URL: str = "https://api.github.com"
+    GITHUB_TOKEN: str | None = None
+    GITHUB_DEFAULT_OWNER: str = "vulnify"
+    GITHUB_DEFAULT_REPO: str = "demo-workspace"
+    GITHUB_API_TIMEOUT_SECONDS: int = 15
+    GITHUB_API_VERSION: str = "2022-11-28"
+
+    # Agent Investigation Configuration (US-602)
+    AGENT_STEP_LIMIT: int = 10
+    AGENT_RUN_TIMEOUT_SECONDS: int = 60
+    AGENT_LLM_PROVIDER: str = "auto"
+    AGENT_LLM_MODEL: str = "gpt-4o-mini"
+    AGENT_LLM_API_KEY: str | None = None
+    OPENAI_API_KEY: str | None = None
+    GEMINI_API_KEY: str | None = None
+
+    @field_validator("AGENT_STEP_LIMIT")
+    @classmethod
+    def validate_agent_step_limit(cls, v: int) -> int:
+        if v <= 0 or v > 30:
+            raise ValueError("AGENT_STEP_LIMIT must be between 1 and 30.")
+        return v
+
+    @field_validator("AGENT_RUN_TIMEOUT_SECONDS")
+    @classmethod
+    def validate_agent_timeout(cls, v: int) -> int:
+        if v < 5 or v > 300:
+            raise ValueError("AGENT_RUN_TIMEOUT_SECONDS must be between 5 and 300 seconds.")
+        return v
+
     @field_validator("DEPENDENCY_IMPORT_MAX_FILE_SIZE_MB")
     @classmethod
     def validate_max_file_size_mb(cls, v: int) -> int:

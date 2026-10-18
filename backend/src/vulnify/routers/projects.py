@@ -59,6 +59,12 @@ from vulnify.schemas import (
     SimulationRequest,
     SimulationResponse,
     SimulationListResponse,
+    GitHubIntegrationStatusResponse,
+    GitHubIssuePreviewRequest,
+    GitHubIssuePreviewResponse,
+    GitHubIssueCreateRequest,
+    GitHubIssueRecordResponse,
+    GitHubIssueListResponse,
 )
 from vulnify.services.data_quality import (
     DataQualityService,
@@ -67,6 +73,10 @@ from vulnify.services.data_quality import (
 from vulnify.services.fix_simulation import (
     FixSimulationService,
     get_fix_simulation_service,
+)
+from vulnify.services.github_service import (
+    GitHubService,
+    get_github_service,
 )
 from vulnify.services.upgrade_candidates import (
     UpgradeCandidatesService,
@@ -1036,6 +1046,79 @@ async def get_simulation(
             detail=f"Simulation '{simulation_id}' not found for project '{project.id}'.",
         )
     return sim
+
+
+# =====================================================================
+# US-503 / US-504: GitHub Issue Remediation Endpoints
+# =====================================================================
+
+
+@router.get(
+    "/{project_id}/github/status",
+    response_model=GitHubIntegrationStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get GitHub integration configuration status (US-503 / US-506)",
+)
+async def get_github_status(
+    project_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    github_service: GitHubService = Depends(get_github_service),
+) -> GitHubIntegrationStatusResponse:
+    """Retrieve GitHub integration configuration status and default target repository."""
+    return github_service.get_status()
+
+
+@router.post(
+    "/{project_id}/findings/{finding_id}/github-issues/preview",
+    response_model=GitHubIssuePreviewResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate structured GitHub issue preview with plan hash (US-503)",
+)
+async def preview_github_issue(
+    project_id: str,
+    finding_id: str,
+    request: GitHubIssuePreviewRequest,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    github_service: GitHubService = Depends(get_github_service),
+) -> GitHubIssuePreviewResponse:
+    """Generate structured markdown issue preview and cryptographic plan hash for review (US-503)."""
+    return github_service.generate_preview(project.id, finding_id, request)
+
+
+@router.post(
+    "/{project_id}/findings/{finding_id}/github-issues",
+    response_model=GitHubIssueRecordResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Approve and create real GitHub issue via REST API (US-504)",
+)
+async def create_github_issue(
+    project_id: str,
+    finding_id: str,
+    request: GitHubIssueCreateRequest,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    github_service: GitHubService = Depends(get_github_service),
+) -> GitHubIssueRecordResponse:
+    """Validate approved plan hash, enforce human gating, and create GitHub issue (US-504)."""
+    return await github_service.create_issue(project.id, finding_id, request, current_user)
+
+
+@router.get(
+    "/{project_id}/github-issues",
+    response_model=GitHubIssueListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List remediation issues created for project (US-505)",
+)
+async def list_project_github_issues(
+    project_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    github_service: GitHubService = Depends(get_github_service),
+) -> GitHubIssueListResponse:
+    """Retrieve action history of GitHub remediation issues filed for this project."""
+    return github_service.list_project_issues(project.id)
 
 
 @router.get(

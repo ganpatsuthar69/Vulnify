@@ -20,7 +20,7 @@ from vulnify.errors import (
     validation_exception_handler,
 )
 from vulnify.logging import RequestIdMiddleware, setup_logging
-from vulnify.routers import admin, auth, health, projects, vulnerabilities
+from vulnify.routers import admin, agent, auth, health, projects, vulnerabilities
 
 CSRF_PROTECTED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -114,6 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin.router)
     app.include_router(projects.router)
     app.include_router(vulnerabilities.router)
+    app.include_router(agent.router)
 
     return app
 

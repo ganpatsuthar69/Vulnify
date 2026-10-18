@@ -1,5 +1,6 @@
 """Pytest configuration and fixtures for backend authentication tests."""
 
+import os
 from collections.abc import AsyncIterator
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -8,6 +9,11 @@ import pytest
 from vulnify.config import Settings, get_settings
 from vulnify.dependencies import COOKIE_SESSION_NAME
 from vulnify.graph.advisory_repository import InMemoryAdvisoryRepository, get_advisory_repository
+from vulnify.graph.agent_run_repository import (
+    InMemoryAgentRunRepository,
+    get_agent_run_repository,
+    set_agent_run_repository_override,
+)
 from vulnify.graph.dependency_repository import InMemoryDependencyRepository, get_dependency_repository
 from vulnify.graph.job_repository import InMemoryIngestionJobRepository, get_job_repository
 from vulnify.graph.project_repository import InMemoryProjectRepository, get_project_repository
@@ -15,12 +21,14 @@ from vulnify.graph.user_repository import InMemoryUserRepository, get_user_repos
 from vulnify.graph.vulnerability_repository import (
     InMemoryVulnerabilityRepository,
     get_vulnerability_repository,
+    set_vulnerability_repository_override,
 )
 from vulnify.main import create_app
 from vulnify.rate_limiter import login_rate_limiter
 from vulnify.security import create_session_jwt
 
 TEST_SESSION_SECRET = "test_session_secret_that_is_at_least_32_chars_long!"
+os.environ.setdefault("SESSION_SECRET", TEST_SESSION_SECRET)
 
 ADMIN_USER = {
     "id": "admin-user-uuid",
@@ -86,6 +94,11 @@ def mock_job_repo() -> InMemoryIngestionJobRepository:
 
 
 @pytest.fixture
+def mock_agent_run_repo() -> InMemoryAgentRunRepository:
+    return InMemoryAgentRunRepository()
+
+
+@pytest.fixture
 def app(
     test_settings: Settings,
     mock_user_repo: InMemoryUserRepository,
@@ -94,6 +107,7 @@ def app(
     mock_advisory_repo: InMemoryAdvisoryRepository,
     mock_vuln_repo: InMemoryVulnerabilityRepository,
     mock_job_repo: InMemoryIngestionJobRepository,
+    mock_agent_run_repo: InMemoryAgentRunRepository,
 ) -> FastAPI:
     test_app = create_app(settings=test_settings)
     test_app.dependency_overrides[get_settings] = lambda: test_settings
@@ -103,6 +117,7 @@ def app(
     test_app.dependency_overrides[get_advisory_repository] = lambda: mock_advisory_repo
     test_app.dependency_overrides[get_vulnerability_repository] = lambda: mock_vuln_repo
     test_app.dependency_overrides[get_job_repository] = lambda: mock_job_repo
+    test_app.dependency_overrides[get_agent_run_repository] = lambda: mock_agent_run_repo
     return test_app
 
 
@@ -114,6 +129,7 @@ def reset_state(
     mock_advisory_repo: InMemoryAdvisoryRepository,
     mock_vuln_repo: InMemoryVulnerabilityRepository,
     mock_job_repo: InMemoryIngestionJobRepository,
+    mock_agent_run_repo: InMemoryAgentRunRepository,
 ) -> None:
     login_rate_limiter.reset()
     mock_user_repo.clear()
@@ -127,6 +143,13 @@ def reset_state(
     mock_vuln_repo.service_calls.clear()
     mock_vuln_repo.findings_override.clear()
     mock_job_repo._jobs.clear()
+    mock_agent_run_repo.clear()
+    set_vulnerability_repository_override(mock_vuln_repo)
+    set_agent_run_repository_override(mock_agent_run_repo)
+    from vulnify.agent.orchestrator import set_agent_orchestrator
+    set_agent_orchestrator(None)
+    from vulnify.services.github_service import reset_github_state
+    reset_github_state()
 
 
 @pytest.fixture

@@ -244,4 +244,35 @@ RETURN s.id AS service_id,
 ORDER BY shortest_depth ASC, total_paths DESC
 ```
 
+---
+
+## 7. Record Triage Decision (`record_triage_decision`)
+
+### Purpose
+Idempotently updates the triage decision status (`open`, `affected`, `not_affected`, `fixed`), human operator justification, and audit timestamp on the `AFFECTS` relationship connecting a vulnerability advisory to an affected package version.
+
+### Cypher Query Template
+```cypher
+// name: record_triage_decision
+// what it proves: updates triage status, justification, and timestamp on an AFFECTS relationship
+// parameters: $project_id, $advisory_id, $package_version_id, $status, $justification, $triaged_by, $triaged_at
+MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(s:Service)
+MATCH (v:Vulnerability {id: $advisory_id})-[r:AFFECTS]->(pv:PackageVersion {id: $package_version_id})
+SET r.triage_status = $status,
+    r.triage_justification = $justification,
+    r.triaged_by = $triaged_by,
+    r.triaged_at = $triaged_at
+RETURN count(r) AS updated_count
+```
+
+### Entity Model and Direction
+- **Starting Entity**: `(p:Project {id: $project_id})` scoped to the current project context.
+- **Matched Nodes**: `(v:Vulnerability {id: $advisory_id})` and `(pv:PackageVersion {id: $package_version_id})`.
+- **Target Relationship**: `-[r:AFFECTS]->` updated with `triage_status`, `triage_justification`, `triaged_by`, and `triaged_at`.
+
+### Security Constraints
+- Bound to verified entity IDs.
+- Parameterized only; no string interpolation.
+- State mutation strictly gated behind human approval verification (`confirmed: true`).
+
 

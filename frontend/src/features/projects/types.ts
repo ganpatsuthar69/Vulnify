@@ -553,5 +553,72 @@ export interface SimulationListResponse {
   total: number
 }
 
+// =====================================================================
+// US-503 / US-504: GitHub Remediation Issues Types
+// =====================================================================
+
+export interface GitHubIntegrationStatusResponse {
+  configured: boolean
+  default_owner?: string | null
+  default_repo?: string | null
+  target_repo: string
+  api_base_url: string
+}
+
+export interface GitHubIssuePreviewRequest {
+  title_override?: string | null
+  body_override?: string | null
+  target_repo?: string | null
+  target_version?: string | null
+}
+
+export interface GitHubIssuePreviewResponse {
+  project_id: string
+  finding_id: string
+  advisory_id: string
+  package_name: string
+  current_version: string
+  target_version?: string | null
+  ecosystem: string
+  service_name: string
+  target_repo: string
+  title: string
+  body: string
+  plan_hash: string
+  can_submit: boolean
+  configuration_warning?: string | null
+  generated_at: number
+}
+
+export interface GitHubIssueCreateRequest {
+  plan_hash: string
+  title: string
+  body: string
+  target_repo: string
+  target_version?: string | null
+  confirmed: boolean
+}
+
+export interface GitHubIssueRecordResponse {
+  id: string
+  project_id: string
+  finding_id: string
+  target_repo: string
+  issue_number: number
+  issue_url: string
+  title: string
+  plan_hash: string
+  created_by: string
+  state: string
+  created_at: number
+  is_duplicate: boolean
+  message: string
+}
+
+export interface GitHubIssueListResponse {
+  items: GitHubIssueRecordResponse[]
+  total: number
+}
+
 
 

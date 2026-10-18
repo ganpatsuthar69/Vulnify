@@ -655,3 +655,71 @@ class SimulationListResponse(BaseModel):
     items: list[SimulationResponse] = Field(default_factory=list, description="Recent simulation runs for this project")
     total: int = Field(default=0, description="Total recorded simulations")
 
+
+# =====================================================================
+# US-503 / US-504: GitHub Issue Remediation Schemas
+# =====================================================================
+
+
+class GitHubIntegrationStatusResponse(BaseModel):
+    configured: bool = Field(..., description="True if GITHUB_TOKEN is configured in backend environment")
+    default_owner: str | None = Field(default=None, description="Configured default repository owner")
+    default_repo: str | None = Field(default=None, description="Configured default repository name")
+    target_repo: str = Field(..., description="Default target repository in owner/repo format")
+    api_base_url: str = Field(..., description="Configured GitHub API base URL")
+
+
+class GitHubIssuePreviewRequest(BaseModel):
+    target_repo: str | None = Field(default=None, description="Optional target repository override (owner/repo)")
+    target_version: str | None = Field(default=None, description="Optional remediation target version from US-401/US-501")
+    title_override: str | None = Field(default=None, description="Optional user-edited title")
+    operator_notes: str | None = Field(default=None, description="Optional operator notes to include in issue body")
+
+
+class GitHubIssuePreviewResponse(BaseModel):
+    project_id: str = Field(..., description="Project identifier")
+    finding_id: str = Field(..., description="Finding identifier")
+    package_name: str = Field(..., description="Package name")
+    current_version: str = Field(..., description="Currently installed package version")
+    target_version: str | None = Field(default=None, description="Remediation target version if available")
+    advisory_id: str = Field(..., description="OSV/CVE advisory identifier")
+    severity: str = Field(..., description="Advisory severity rating")
+    title: str = Field(..., description="Generated issue title")
+    body: str = Field(..., description="Structured markdown issue body (safe plain text/markdown, never raw HTML)")
+    target_repo: str = Field(..., description="Target repository (owner/repo)")
+    plan_hash: str = Field(..., description="Cryptographic SHA-256 plan hash binding the preview content (US-503)")
+    can_submit: bool = Field(default=True, description="True if integration is configured and preview is valid")
+    configuration_warning: str | None = Field(default=None, description="Warning if GITHUB_TOKEN is not configured")
+
+
+class GitHubIssueCreateRequest(BaseModel):
+    plan_hash: str = Field(..., min_length=1, description="Plan hash from preview confirming user reviewed the exact plan (US-503)")
+    title: str = Field(..., min_length=1, max_length=256, description="Issue title approved by user")
+    body: str = Field(..., min_length=1, max_length=65536, description="Structured issue body approved by user")
+    target_repo: str = Field(..., min_length=1, max_length=256, description="Target repository in owner/repo format")
+    target_version: str | None = Field(default=None, description="Target package version")
+    confirmed: bool = Field(..., description="Mandatory explicit user approval flag (US-504)")
+
+
+class GitHubIssueRecordResponse(BaseModel):
+    id: str = Field(..., description="Internal issue record identifier")
+    project_id: str = Field(..., description="Project identifier")
+    finding_id: str = Field(..., description="Finding identifier")
+    package_name: str = Field(..., description="Package name")
+    target_version: str | None = Field(default=None, description="Target version")
+    issue_number: int = Field(..., description="GitHub issue number returned by GitHub API")
+    issue_url: str = Field(..., description="Official GitHub issue URL returned by GitHub API")
+    title: str = Field(..., description="Issue title")
+    target_repo: str = Field(..., description="Repository owner/repo")
+    state: str = Field(default="open", description="Issue state (open, closed)")
+    plan_hash: str = Field(..., description="Plan hash bound to this issue creation")
+    created_at: int = Field(..., description="UTC timestamp of issue creation")
+    created_by: str = Field(..., description="User email or identity who approved the issue")
+    is_duplicate: bool = Field(default=False, description="True if this request returned an existing issue (idempotent duplicate prevention)")
+    message: str = Field(..., description="Action summary message")
+
+
+class GitHubIssueListResponse(BaseModel):
+    items: list[GitHubIssueRecordResponse] = Field(default_factory=list, description="List of created remediation issues")
+    total: int = Field(default=0, description="Total issues created for project")
+

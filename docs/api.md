@@ -1791,6 +1791,494 @@ Retrieves full details and verification checklist for a specific simulation run.
 - **`401 Unauthorized`**: Authentication required.
 - **`404 Not Found`**: Simulation run not found.
 
+---
 
+## GitHub Remediation Issue Endpoints (US-503 / US-504 / US-505)
+
+### 25. `GET /api/projects/{project_id}/github/status` (US-503 / US-504)
+
+Retrieves server-side GitHub integration status and default target repository without leaking credentials or API tokens.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/github/status`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### Responses
+- **`200 OK`**:
+  ```json
+  {
+    "configured": true,
+    "default_owner": "vulnify",
+    "default_repo": "demo-workspace",
+    "target_repo": "vulnify/demo-workspace",
+    "api_base_url": "https://api.github.com"
+  }
+  ```
+- **`401 Unauthorized`**: Authentication required.
+- **`404 Not Found`**: Project not found.
+
+---
+
+### 26. `POST /api/projects/{project_id}/findings/{finding_id}/github-issues/preview` (US-503)
+
+Generates a structured, evidence-backed GitHub issue preview with a deterministic SHA-256 plan hash. Raw unquoted advisory text is never used, and angle brackets are sanitized to prevent raw HTML execution. Editing the title changes the plan hash and resets any prior approval state.
+
+#### Request
+- **Method**: `POST`
+- **Path**: `/api/projects/{project_id}/findings/{finding_id}/github-issues/preview`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-Requested-With: vulnify`
+- **Body**:
+  ```json
+  {
+    "title_override": "[Security] Remediate lodash@4.17.20 (GHSA-29mw-wpgm-hmr9)",
+    "target_version": "4.17.21",
+    "target_repo": "vulnify/demo-workspace"
+  }
+  ```
+
+#### Responses
+- **`200 OK`**:
+  ```json
+  {
+    "project_id": "proj-1",
+    "finding_id": "find-1",
+    "advisory_id": "GHSA-29mw-wpgm-hmr9",
+    "package_name": "lodash",
+    "current_version": "4.17.20",
+    "target_version": "4.17.21",
+    "ecosystem": "npm",
+    "service_name": "payment-api",
+    "target_repo": "vulnify/demo-workspace",
+    "title": "[Security] Remediate lodash@4.17.20 (GHSA-29mw-wpgm-hmr9)",
+    "body": "## Vulnerability Remediation Request\n\n### Target Package\n...",
+    "plan_hash": "plan_sha256_e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "can_submit": true,
+    "configuration_warning": null,
+    "generated_at": 1729173000
+  }
+  ```
+- **`401 Unauthorized`**: Authentication required.
+- **`404 Not Found`**: Project or finding not found.
+
+---
+
+### 27. `POST /api/projects/{project_id}/findings/{finding_id}/github-issues` (US-504)
+
+Creates a real GitHub issue via GitHub REST API after explicit human approval (`confirmed: true`) and plan hash verification. Re-submitting the same plan hash returns the existing issue without creating duplicates. Requires CSRF protection header `X-Requested-With: vulnify`.
+
+#### Request
+- **Method**: `POST`
+- **Path**: `/api/projects/{project_id}/findings/{finding_id}/github-issues`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-Requested-With: vulnify`
+- **Body**:
+  ```json
+  {
+    "plan_hash": "plan_sha256_e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "title": "[Security] Remediate lodash@4.17.20 (GHSA-29mw-wpgm-hmr9)",
+    "body": "## Vulnerability Remediation Request\n...",
+    "target_repo": "vulnify/demo-workspace",
+    "target_version": "4.17.21",
+    "confirmed": true
+  }
+  ```
+
+#### Responses
+- **`200 OK`**:
+  ```json
+  {
+    "id": "gh-issue-abc12345",
+    "project_id": "proj-1",
+    "finding_id": "find-1",
+    "target_repo": "vulnify/demo-workspace",
+    "issue_number": 42,
+    "issue_url": "https://github.com/vulnify/demo-workspace/issues/42",
+    "title": "[Security] Remediate lodash@4.17.20 (GHSA-29mw-wpgm-hmr9)",
+    "plan_hash": "plan_sha256_e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "created_by": "admin@vulnify.local",
+    "state": "open",
+    "created_at": 1729173000,
+    "is_duplicate": false,
+    "message": "GitHub issue #42 created successfully in vulnify/demo-workspace."
+  }
+  ```
+- **`400 Bad Request`**: Missing `confirmed: true`, tampered plan hash, or missing `GITHUB_TOKEN`.
+- **`403 Forbidden`**: Token lacks issue write permissions on repository.
+- **`404 Not Found`**: Target repository or finding not found on GitHub.
+- **`422 Unprocessable Content`**: Invalid repository format or rejected payload.
+- **`429 Too Many Requests`**: GitHub API rate limit exceeded.
+
+---
+
+### 28. `GET /api/projects/{project_id}/github-issues` (US-505 / US-506)
+
+Lists all GitHub issues created for findings in the specified project.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/github-issues`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### Responses
+- **`200 OK`**:
+  ```json
+  {
+    "items": [
+      {
+        "id": "gh-issue-abc12345",
+        "project_id": "proj-1",
+        "finding_id": "find-1",
+        "target_repo": "vulnify/demo-workspace",
+        "issue_number": 42,
+        "issue_url": "https://github.com/vulnify/demo-workspace/issues/42",
+        "title": "[Security] Remediate lodash@4.17.20 (GHSA-29mw-wpgm-hmr9)",
+        "plan_hash": "plan_sha256_e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "created_by": "admin@vulnify.local",
+        "state": "open",
+        "created_at": 1729173000,
+        "is_duplicate": false,
+        "message": "GitHub issue #42 created successfully in vulnify/demo-workspace."
+      }
+    ],
+    "total": 1
+  }
+  ```
+- **`401 Unauthorized`**: Authentication required.
+- **`404 Not Found`**: Project not found.
+
+---
+
+### 27. Agent Tools & MCP Registry Endpoints (US-601)
+
+#### `GET /api/agent/tools`
+- **Description**: Returns all dynamically registered agent tools, their schemas, classifications, and approval requirements.
+- **Authentication**: Required (`require_auth`).
+- **Response**: `200 OK`
+  ```json
+  {
+    "tools": [
+      {
+        "name": "list_findings",
+        "description": "Retrieve vulnerability findings for a project with bounded filtering and pagination.",
+        "classification": "read_only",
+        "query_id": "get_project_findings",
+        "requires_approval": false,
+        "input_schema": {
+          "properties": {
+            "project_id": {"title": "Project Id", "type": "string"},
+            "page": {"default": 1, "minimum": 1, "title": "Page", "type": "integer"},
+            "page_size": {"default": 25, "maximum": 100, "minimum": 1, "title": "Page Size", "type": "integer"}
+          },
+          "required": ["project_id"],
+          "type": "object"
+        }
+      }
+    ],
+    "total": 7
+  }
+  ```
+
+#### `GET /api/agent/tools/{tool_name}`
+- **Description**: Retrieve specification and parameter schema for a single agent tool.
+- **Authentication**: Required (`require_auth`).
+- **Response**: `200 OK` (ToolMetadata) or `404 Not Found`.
+
+#### `POST /api/agent/tools/{tool_name}/execute`
+- **Description**: Execute a registered agent tool. Enforces input schema validation, approval gating on write tools (`confirmed: true`), execution timing, and structured trace generation.
+- **Authentication**: Required (`require_auth`).
+- **CSRF**: Enforced (`X-Requested-With: vulnify`).
+- **Request Body**: JSON dictionary of tool parameters.
+- **Response**: `200 OK`
+  ```json
+  {
+    "tool_name": "list_findings",
+    "status": "success",
+    "data": {
+      "items": [],
+      "total": 0,
+      "page": 1,
+      "page_size": 25
+    },
+    "trace": {
+      "tool_name": "list_findings",
+      "tool_version": "1.0.0",
+      "query_id": "get_project_findings",
+      "inputs": {"project_id": "proj-1"},
+      "result_summary": "No findings found for project 'proj-1' matching criteria.",
+      "duration_ms": 1.45,
+      "record_count": 0,
+      "evaluated_at": 1729267200,
+      "outcome": "empty",
+      "evidence_references": [],
+      "warning": null
+    },
+    "error_message": null
+  }
+  ```
+- **Rejection Example (Write Tool without Confirmation)**:
+  ```json
+  {
+    "tool_name": "record_decision",
+    "status": "rejected",
+    "data": null,
+    "trace": {
+      "tool_name": "record_decision",
+      "query_id": "record_triage_decision",
+      "result_summary": "Execution rejected for 'record_decision': explicit human approval is required ('confirmed': true).",
+      "outcome": "rejected",
+      "warning": "Gated write tool blocked without human confirmation."
+    },
+    "error_message": "Tool 'record_decision' is a write-capable tool and requires explicit human approval ('confirmed': true)."
+  }
+  ```
+
+---
+
+### 29. Agent Interactive Chat & Streaming Endpoints (US-602)
+
+#### `POST /api/agent/chat/stream`
+- **Description**: Stream agent investigation events, intermediate tool dispatches, and evidence-grounded answer tokens using Server-Sent Events (SSE).
+- **Authentication**: Required (`require_auth`). Admin only (`role == "admin"`).
+- **CSRF**: Enforced (`X-Requested-With: vulnify`).
+- **Request Body**:
+  ```json
+  {
+    "project_id": "proj-1",
+    "message": "Explain how payment-service reaches lodash and rank findings",
+    "run_id": "run-optional-id"
+  }
+  ```
+- **Response Headers**:
+  - `Content-Type: text/event-stream`
+  - `Cache-Control: no-cache`
+  - `Connection: keep-alive`
+- **SSE Event Format**:
+  Each event follows standard SSE formatting:
+  ```text
+  event: <event_name>
+  data: {"event": "<event_name>", "run_id": "...", "sequence": 1, "timestamp": 1729267200, "data": {...}}
+
+  ```
+- **Event Types**:
+  - `run_started`: Emitted upon run initialization with `step_limit` and `timeout_seconds`.
+  - `assistant_status`: Status message indicating internal reasoning state.
+  - `tool_started`: Emitted before tool execution with tool inputs and call ID.
+  - `tool_completed`: Emitted after tool execution with execution duration, outcome, and trace fragment.
+  - `answer_delta`: Incremental stream of answer text tokens.
+  - `answer_completed`: Final synthesised response text with references to findings and dependency paths.
+  - `run_cancelled`: Emitted if the run was halted by user request or client disconnect.
+  - `run_timeout`: Emitted if wall-clock timeout (`AGENT_RUN_TIMEOUT_SECONDS`) was exceeded.
+  - `run_step_limit`: Emitted if maximum step budget (`AGENT_STEP_LIMIT`) was reached.
+  - `run_completed`: Final terminal event with total steps and elapsed duration.
+  - `run_failed`: Emitted if an unhandled internal exception occurred.
+- **Status Codes**:
+  - `200 OK`: Stream opened successfully.
+  - `401 Unauthorized`: Authentication missing.
+  - `403 Forbidden`: Authenticated user is not an administrator (`role != "admin"`), or CSRF header missing.
+  - `404 Not Found`: Target project does not exist.
+  - `422 Unprocessable Content`: Empty message or exceeds 2,000 characters.
+
+#### `POST /api/agent/runs/{run_id}/cancel`
+- **Description**: Signals cancellation to an in-flight agent run. The orchestrator will stop dispatching subsequent tool steps and gracefully conclude the stream.
+- **Authentication**: Required (`require_auth`). Admin only (`role == "admin"`).
+- **CSRF**: Enforced (`X-Requested-With: vulnify`).
+- **Response**: `200 OK`
+  ```json
+  {
+    "run_id": "run-abc12345",
+    "status": "cancelled",
+    "message": "Run 'run-abc12345' cancellation signal recorded."
+  }
+  ```
+- **Status Codes**:
+  - `200 OK`: Cancellation processed (status may be `cancelled`, `already_terminal`, or `not_found`).
+  - `401 Unauthorized`: Authentication required.
+  - `403 Forbidden`: Admin role required.
+
+#### `GET /api/agent/runs/{run_id}/status`
+- **Description**: Inspect execution status, step count, and timestamps for an agent run.
+- **Authentication**: Required (`require_auth`). User or Admin.
+- **Response**: `200 OK`
+  ```json
+  {
+    "run_id": "run-abc12345",
+    "project_id": "proj-1",
+    "status": "completed",
+    "step_count": 3,
+    "created_at": 1729267200,
+    "completed_at": 1729267205,
+    "error_message": null
+  }
+  ```
+
+---
+
+### 30. Agent Stored Traces & Investigation History Endpoints (US-603)
+
+#### `GET /api/agent/runs`
+- **Description**: Paginated listing of past agent runs for a project.
+- **Authentication**: Required (`require_auth`). Admin only (`role == "admin"`).
+- **Query Parameters**:
+  - `project_id` (string, required): Project identifier to filter runs.
+  - `page` (integer, optional, default: 1): Page number (1-based).
+  - `page_size` (integer, optional, default: 25, max: 100): Number of records per page.
+- **Response**: `200 OK`
+  ```json
+  {
+    "items": [
+      {
+        "id": "run-abc12345",
+        "project_id": "proj-1",
+        "user_email": "admin@vulnify.local",
+        "prompt": "Explain how payment-service reaches lodash",
+        "status": "completed",
+        "started_at": 1729267200,
+        "completed_at": 1729267205,
+        "has_final_answer": true,
+        "step_count": 3,
+        "tool_call_count": 3,
+        "error_message": null
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 25
+  }
+  ```
+- **Status Codes**:
+  - `200 OK`: Runs retrieved.
+  - `401 Unauthorized`: Authentication missing.
+  - `403 Forbidden`: Admin role required.
+  - `404 Not Found`: Project not found.
+
+#### `GET /api/agent/runs/{run_id}`
+- **Description**: Retrieve detailed metadata and generated answer for a single agent investigation session.
+- **Authentication**: Required (`require_auth`). Admin only (`role == "admin"`).
+- **Response**: `200 OK`
+  ```json
+  {
+    "id": "run-abc12345",
+    "project_id": "proj-1",
+    "user_id": "admin-uuid",
+    "user_email": "admin@vulnify.local",
+    "prompt": "Explain how payment-service reaches lodash",
+    "status": "completed",
+    "started_at": 1729267200,
+    "completed_at": 1729267205,
+    "final_answer": "Analysis concluded: lodash is reached transitively via async@3.2.0.",
+    "error_message": null,
+    "step_count": 3,
+    "findings_referenced": ["find-lodash-1"],
+    "paths_referenced": ["Service: payment-svc -> async@3.2.0 -> lodash@4.17.20"],
+    "tool_call_count": 3
+  }
+  ```
+- **Status Codes**:
+  - `200 OK`: Run found and returned.
+  - `401 Unauthorized`: Authentication required.
+  - `403 Forbidden`: Admin role required.
+  - `404 Not Found`: Run not found.
+
+#### `GET /api/agent/runs/{run_id}/trace`
+- **Description**: Retrieve the complete audit trace containing all ordered tool executions, sanitized inputs, result summaries, query IDs, and latency telemetry.
+- **Authentication**: Required (`require_auth`). Admin only (`role == "admin"`).
+- **Response**: `200 OK`
+  ```json
+  {
+    "run": {
+      "id": "run-abc12345",
+      "project_id": "proj-1",
+      "user_id": "admin-uuid",
+      "user_email": "admin@vulnify.local",
+      "prompt": "Explain how payment-service reaches lodash",
+      "status": "completed",
+      "started_at": 1729267200,
+      "completed_at": 1729267205,
+      "final_answer": "...",
+      "error_message": null,
+      "step_count": 2,
+      "findings_referenced": ["find-lodash-1"],
+      "paths_referenced": ["..."],
+      "tool_call_count": 2
+    },
+    "tool_calls": [
+      {
+        "id": "call-1",
+        "run_id": "run-abc12345",
+        "sequence": 1,
+        "tool_name": "list_findings",
+        "display_name": "Querying project findings list",
+        "inputs": {"project_id": "proj-1", "page": 1, "page_size": 25},
+        "result_summary": "Retrieved 1 open finding(s).",
+        "status": "success",
+        "query_id": "get_project_findings",
+        "duration_ms": 3.42,
+        "outcome": "success",
+        "evidence_references": ["find-lodash-1"],
+        "started_at": 1729267201,
+        "completed_at": 1729267202,
+        "error_message": null
+      },
+      {
+        "id": "call-2",
+        "run_id": "run-abc12345",
+        "sequence": 2,
+        "tool_name": "get_dependency_paths",
+        "display_name": "Traversing graph paths to lodash@4.17.20",
+        "inputs": {"project_id": "proj-1", "finding_id": "find-lodash-1"},
+        "result_summary": "Discovered 1 dependency path(s).",
+        "status": "success",
+        "query_id": "get_project_finding_paths",
+        "duration_ms": 8.15,
+        "outcome": "success",
+        "evidence_references": ["find-lodash-1"],
+        "started_at": 1729267202,
+        "completed_at": 1729267203,
+        "error_message": null
+      }
+    ]
+  }
+  ```
+- **Status Codes**:
+  - `200 OK`: Trace retrieved.
+  - `401 Unauthorized`: Authentication required.
+  - `403 Forbidden`: Admin role required.
+  - `404 Not Found`: Run not found.
+
+#### `GET /api/agent/runs/by-finding/{finding_id}`
+- **Description**: Retrieve past agent investigation sessions that referenced or evaluated a specific finding ID.
+- **Authentication**: Required (`require_auth`). Admin only (`role == "admin"`).
+- **Query Parameters**:
+  - `project_id` (string, required): Project identifier context.
+  - `limit` (integer, optional, default: 10, max: 50): Max runs to return.
+- **Response**: `200 OK`
+  ```json
+  [
+    {
+      "id": "run-abc12345",
+      "project_id": "proj-1",
+      "user_email": "admin@vulnify.local",
+      "prompt": "Deep dive on lodash exposure",
+      "status": "completed",
+      "started_at": 1729267200,
+      "completed_at": 1729267205,
+      "has_final_answer": true,
+      "step_count": 2,
+      "tool_call_count": 2,
+      "error_message": null
+    }
+  ]
+  ```
+- **Status Codes**:
+  - `200 OK`: Matching runs list (empty list if no investigations reference the finding).
+  - `401 Unauthorized`: Authentication required.
+  - `403 Forbidden`: Admin role required.
+  - `404 Not Found`: Project not found.
 
 
