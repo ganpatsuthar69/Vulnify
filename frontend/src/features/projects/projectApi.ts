@@ -24,6 +24,9 @@ import type {
   ProjectDataQualityResponse,
   UpgradeCandidatesResponse,
   ProjectUpgradeCandidatesResponse,
+  SimulationRequest,
+  SimulationResponse,
+  SimulationListResponse,
 } from './types'
 import { ApiClientError, isMockMode, parseApiError } from '@/shared/api/client'
 import type { ApiClientErrorOptions } from '@/shared/types/api'
@@ -1339,6 +1342,192 @@ export async function getProjectUpgradeCandidates(
   await handleErrorResponse(response)
   throw new ProjectApiError('Failed to fetch project upgrade candidates.', { status: response.status })
 }
+
+// =====================================================================
+// US-501 / US-502: Fix Simulation API Methods
+// =====================================================================
+
+const mockSimulationsStore: Record<string, SimulationResponse[]> = {}
+
+export async function simulateFix(
+  projectId: string,
+  request: SimulationRequest,
+): Promise<SimulationResponse> {
+  if (isMockMode()) {
+    const sim: SimulationResponse = {
+      id: `sim-mock-${Date.now()}`,
+      project_id: projectId,
+      package_name: request.package_name,
+      current_version: request.current_version,
+      target_version: request.target_version,
+      ecosystem: request.ecosystem || 'npm',
+      service_id: request.service_id || null,
+      service_name: 'payment-api',
+      method: 'simulated_from_metadata',
+      method_description:
+        'Evaluated on an in-memory graph overlay using OSV advisory version metadata and lockfile dependency paths without mutating stored graph data.',
+      is_simulation: true,
+      real_graph_mutated: false,
+      baseline_id: `snap-${Date.now().toString(16)}`,
+      is_transitive: false,
+      path_depth: 1,
+      paths_severed_count: 1,
+      paths_remaining_count: 0,
+      dependent_services: ['payment-api'],
+      cleared_findings: [
+        {
+          finding_id: request.finding_id || 'find-mock-1',
+          advisory_id: 'GHSA-mock-sample',
+          package_name: request.package_name,
+          installed_version: request.current_version,
+          target_version: request.target_version,
+          severity: 'HIGH',
+          status: 'expected_resolved',
+          explanation: `Proposed target version ${request.target_version} satisfies upstream fixed version requirements.`,
+          source_url: 'https://osv.dev',
+        },
+      ],
+      unchanged_findings: [],
+      newly_introduced_findings: [],
+      total_findings_cleared: 1,
+      total_findings_unchanged: 0,
+      total_findings_introduced: 0,
+      compatibility_status: 'compatible',
+      breaking_change_risk: 'low',
+      resolver_status: 'not_evaluated',
+      compatibility_caveats: [
+        'Absence of detected conflicts does not guarantee runtime compatibility or application safety.',
+        'Graph simulation only: real package manager resolution and container runtime were not executed.',
+      ],
+      checks_performed: [
+        {
+          name: 'Advisory Fixed Version Verification',
+          status: 'passed',
+          description: `Evaluated baseline findings for ${request.package_name} against target version ${request.target_version}. 1 expected to clear.`,
+        },
+        {
+          name: 'Graph Path Exposure Analysis',
+          status: 'passed',
+          description: 'Simulated severing of 1 vulnerable reachability path(s) on graph overlay.',
+        },
+        {
+          name: 'SemVer Compatibility & Breaking Risk',
+          status: 'passed',
+          description: "SemVer differential assessed as 'patch' jump with 'low' breaking change risk.",
+        },
+        {
+          name: 'Package Manager Lockfile Resolution',
+          status: 'not_evaluated',
+          description: 'Graph simulation only; real package-manager resolution (npm/pip) was not executed.',
+        },
+        {
+          name: 'Runtime Sandbox Execution',
+          status: 'not_evaluated',
+          description: 'Non-mutating metadata simulation; dynamic container execution not performed.',
+        },
+      ],
+      safety_disclaimer:
+        'No upgrade is guaranteed safe to ship. Upstream fixed versions indicate that the security advisory reports the vulnerability as resolved in that release. Upgrades may introduce regressions, breaking changes, or undeclared side effects. Always run test suites and security validation before deploying to production.',
+      created_at: Math.floor(Date.now() / 1000),
+    }
+
+    if (!mockSimulationsStore[projectId]) {
+      mockSimulationsStore[projectId] = []
+    }
+    mockSimulationsStore[projectId].unshift(sim)
+    return sim
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/simulations`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'vulnify',
+      },
+      body: JSON.stringify(request),
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as SimulationResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to run fix simulation.', { status: response.status })
+}
+
+export async function getProjectSimulations(
+  projectId: string,
+): Promise<SimulationListResponse> {
+  if (isMockMode()) {
+    const list = mockSimulationsStore[projectId] || []
+    return {
+      items: list,
+      total: list.length,
+    }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/simulations`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as SimulationListResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch project simulations.', { status: response.status })
+}
+
+export async function getSimulationDetail(
+  projectId: string,
+  simulationId: string,
+): Promise<SimulationResponse> {
+  if (isMockMode()) {
+    const list = mockSimulationsStore[projectId] || []
+    const found = list.find((s) => s.id === simulationId)
+    if (found) return found
+    throw new ProjectApiError('Simulation not found.', { status: 404 })
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/simulations/${encodeURIComponent(simulationId)}`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as SimulationResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch simulation detail.', { status: response.status })
+}
+
 
 
 async function handleErrorResponse(response: Response): Promise<never> {

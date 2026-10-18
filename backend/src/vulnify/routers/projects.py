@@ -56,10 +56,17 @@ from vulnify.schemas import (
     UpgradeCandidateItem,
     UpgradeCandidatesResponse,
     ProjectUpgradeCandidatesResponse,
+    SimulationRequest,
+    SimulationResponse,
+    SimulationListResponse,
 )
 from vulnify.services.data_quality import (
     DataQualityService,
     get_data_quality_service,
+)
+from vulnify.services.fix_simulation import (
+    FixSimulationService,
+    get_fix_simulation_service,
 )
 from vulnify.services.upgrade_candidates import (
     UpgradeCandidatesService,
@@ -953,6 +960,82 @@ async def get_project_upgrade_candidates(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to evaluate project upgrade candidates from database.",
         ) from exc
+
+# =====================================================================
+# US-501 / US-502: Fix Simulation Endpoints
+# =====================================================================
+
+
+@router.post(
+    "/{project_id}/simulations",
+    response_model=SimulationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Simulate package upgrade on an in-memory graph overlay (US-501)",
+)
+async def simulate_fix(
+    project_id: str,
+    request: SimulationRequest,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    simulation_service: FixSimulationService = Depends(get_fix_simulation_service),
+) -> SimulationResponse:
+    """Run a non-mutating in-memory graph overlay simulation for a proposed package upgrade."""
+    try:
+        return simulation_service.simulate_fix(project.id, request)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to execute fix simulation: {str(exc)}",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/simulations",
+    response_model=SimulationListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List recent fix simulations for project (US-501)",
+)
+async def list_simulations(
+    project_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    simulation_service: FixSimulationService = Depends(get_fix_simulation_service),
+) -> SimulationListResponse:
+    """Retrieve recent in-memory fix simulations performed for this project."""
+    try:
+        return simulation_service.list_simulations(project.id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve project simulations.",
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/simulations/{simulation_id}",
+    response_model=SimulationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get details of a specific simulation run (US-501)",
+)
+async def get_simulation(
+    project_id: str,
+    simulation_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    simulation_service: FixSimulationService = Depends(get_fix_simulation_service),
+) -> SimulationResponse:
+    """Retrieve details and checklist for a specific simulation run."""
+    sim = simulation_service.get_simulation(project.id, simulation_id)
+    if not sim:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation '{simulation_id}' not found for project '{project.id}'.",
+        )
+    return sim
 
 
 @router.get(

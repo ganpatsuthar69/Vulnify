@@ -577,3 +577,81 @@ class ProjectUpgradeCandidatesResponse(BaseModel):
     )
     evaluated_at: int = Field(..., description="Unix timestamp of project evaluation")
 
+
+# =====================================================================
+# US-501 / US-502: Fix Simulation Schemas
+# =====================================================================
+
+SimulationMethodLiteral = Literal["simulated_from_metadata", "verified_in_sandbox"]
+SimulationCheckStatusLiteral = Literal["passed", "failed", "unknown", "not_evaluated"]
+SimulationFindingStatusLiteral = Literal["expected_resolved", "still_affected", "newly_introduced", "unknown"]
+
+
+class SimulationCheckItem(BaseModel):
+    name: str = Field(..., description="Name of verification check")
+    status: SimulationCheckStatusLiteral = Field(..., description="Outcome of the check")
+    description: str = Field(..., description="Detailed explanation of the check and boundary")
+
+
+class SimulatedFindingDelta(BaseModel):
+    finding_id: str = Field(..., description="Finding identifier or newly discovered vulnerability key")
+    advisory_id: str = Field(..., description="Target OSV / CVE advisory ID")
+    package_name: str = Field(..., description="Target package name")
+    installed_version: str = Field(..., description="Baseline version")
+    target_version: str = Field(..., description="Simulated target version")
+    severity: str = Field(default="UNKNOWN", description="Advisory severity")
+    status: SimulationFindingStatusLiteral = Field(..., description="Outcome delta: expected_resolved, still_affected, newly_introduced, or unknown")
+    explanation: str = Field(..., description="Transparent justification based on affected ranges and fixed versions")
+    source_url: str | None = Field(default=None, description="Upstream advisory source reference")
+
+
+class SimulationRequest(BaseModel):
+    finding_id: str | None = Field(default=None, description="Optional finding ID to pre-populate package metadata")
+    package_name: str = Field(..., min_length=1, description="Canonical package name to simulate upgrading")
+    current_version: str = Field(..., min_length=1, description="Currently installed package version in baseline")
+    target_version: str = Field(..., min_length=1, description="Proposed upgrade target version")
+    ecosystem: str = Field(default="npm", description="Package ecosystem (npm, PyPI, Cargo, Go)")
+    service_id: str | None = Field(default=None, description="Optional service scope identifier")
+
+
+class SimulationResponse(BaseModel):
+    id: str = Field(..., description="Deterministic simulation run identifier")
+    project_id: str = Field(..., description="Target project identifier")
+    package_name: str = Field(..., description="Target package name")
+    current_version: str = Field(..., description="Currently installed baseline version")
+    target_version: str = Field(..., description="Proposed upgrade target version")
+    ecosystem: str = Field(..., description="Package ecosystem")
+    service_id: str | None = Field(default=None, description="Target service ID if scoped")
+    service_name: str | None = Field(default=None, description="Target service display name if scoped")
+    method: SimulationMethodLiteral = Field(default="simulated_from_metadata", description="AC-2: Simulation methodology label")
+    method_description: str = Field(default="Evaluated on an in-memory graph overlay using OSV advisory version metadata and lockfile dependency paths without mutating stored graph data.")
+    is_simulation: bool = Field(default=True, description="Always true; flags this result as a dry-run simulation")
+    real_graph_mutated: bool = Field(default=False, description="AC-3: Explicit guarantee that the real graph was NOT mutated")
+    baseline_id: str = Field(..., description="Digest or timestamp identifying the baseline graph snapshot")
+    is_transitive: bool = Field(default=False, description="True if target package is a transitive dependency in the service")
+    path_depth: int | None = Field(default=None, description="Shortest path depth in baseline graph")
+    paths_severed_count: int = Field(default=0, description="Number of vulnerable reachability paths broken by the proposed change")
+    paths_remaining_count: int = Field(default=0, description="Residual dependency paths still reaching vulnerable versions")
+    dependent_services: list[str] = Field(default_factory=list, description="Services in project that depend on this package")
+    cleared_findings: list[SimulatedFindingDelta] = Field(default_factory=list, description="AC-1: Findings expected to be cleared/resolved by target version")
+    unchanged_findings: list[SimulatedFindingDelta] = Field(default_factory=list, description="AC-1: Findings remaining active or unaffected")
+    newly_introduced_findings: list[SimulatedFindingDelta] = Field(default_factory=list, description="AC-1: New vulnerabilities reported on target version")
+    total_findings_cleared: int = Field(default=0, description="Total count of findings expected to be resolved")
+    total_findings_unchanged: int = Field(default=0, description="Total count of unchanged / residual findings")
+    total_findings_introduced: int = Field(default=0, description="Total count of newly introduced vulnerabilities")
+    compatibility_status: CompatibilityStatusLiteral = Field(default="compatible", description="Compatibility assessment state")
+    breaking_change_risk: BreakingChangeRiskLiteral = Field(default="low", description="SemVer breaking change risk assessment")
+    resolver_status: str = Field(default="not_evaluated", description="Real package-manager resolver status (honest boundary: graph analysis only)")
+    compatibility_caveats: list[str] = Field(default_factory=list, description="Explicit caveats and warnings regarding constraints and dependencies")
+    checks_performed: list[SimulationCheckItem] = Field(default_factory=list, description="Detailed verification checklist with transparent statuses")
+    safety_disclaimer: str = Field(
+        default="A simulation is a prediction based on defined metadata and graph checks, not proof that a dependency upgrade will succeed at build or runtime. Upgrades must be validated through automated integration testing.",
+        description="Mandatory disclaimer: simulation is not proof of safety",
+    )
+    created_at: int = Field(..., description="UTC Unix timestamp of simulation run")
+
+
+class SimulationListResponse(BaseModel):
+    items: list[SimulationResponse] = Field(default_factory=list, description="Recent simulation runs for this project")
+    total: int = Field(default=0, description="Total recorded simulations")
+

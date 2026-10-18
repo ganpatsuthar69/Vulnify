@@ -220,4 +220,28 @@ SET r.status = m.status,
 RETURN count(r) AS count
 ```
 
+---
+
+## 11. Package Dependents & Reachability (`get_package_dependents.cypher`) (US-501)
+
+**Purpose**: Finds services in a project that depend directly or transitively on any version of a given package name, determining shortest dependency depth, reachability count, and affected service names. Powers the in-memory graph overlay simulation (US-501).  
+**Parameters**: `$project_id`, `$package_name`  
+
+```cypher
+// name: get_package_dependents
+// what it proves: finds services in a project depending on a package, computing shortest depth and total reachability paths
+// parameters: $project_id, $package_name
+MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(s:Service)
+MATCH path = (s)-[:DEPENDS_ON*1..8]->(pv:PackageVersion)
+WHERE toLower(pv.name) = toLower($package_name)
+WITH s, pv, min(length(path)) AS shortest_depth, count(path) AS total_paths
+RETURN s.id AS service_id,
+       s.name AS service_name,
+       pv.id AS package_version_id,
+       pv.version AS package_version,
+       shortest_depth,
+       total_paths
+ORDER BY shortest_depth ASC, total_paths DESC
+```
+
 

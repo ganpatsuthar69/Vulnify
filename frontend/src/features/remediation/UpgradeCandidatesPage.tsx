@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   Info,
   GitPullRequest,
+  FlaskConical,
 } from 'lucide-react'
 import { Link } from 'react-router'
 import { useProjects } from '@/features/projects/ProjectProvider'
@@ -337,13 +338,23 @@ export function UpgradeCandidatesPage() {
                     </Link>
 
                     {item.has_fix && recCandidate && (
-                      <Link
-                        to={`/github-issues?finding=${encodeURIComponent(item.finding_id)}&target=${encodeURIComponent(recCandidate.target_version)}`}
-                        className="inline-flex items-center gap-1 rounded bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-slate-300 hover:text-white transition-colors"
-                      >
-                        <GitPullRequest className="h-3 w-3 text-sky-400" />
-                        <span>Preview Remediation Plan &rarr;</span>
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          to={`/simulation?finding=${encodeURIComponent(item.finding_id)}&target=${encodeURIComponent(recCandidate.target_version)}`}
+                          className="inline-flex items-center gap-1 rounded bg-sky-950/40 border border-sky-500/30 hover:bg-sky-900/60 px-2.5 py-1 text-sky-300 hover:text-white transition-colors"
+                        >
+                          <FlaskConical className="h-3 w-3 text-sky-400" />
+                          <span>Simulate Fix</span>
+                        </Link>
+
+                        <Link
+                          to={`/github-issues?finding=${encodeURIComponent(item.finding_id)}&target=${encodeURIComponent(recCandidate.target_version)}`}
+                          className="inline-flex items-center gap-1 rounded bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-slate-300 hover:text-white transition-colors"
+                        >
+                          <GitPullRequest className="h-3 w-3 text-sky-400" />
+                          <span>Preview Remediation Plan &rarr;</span>
+                        </Link>
+                      </div>
                     )}
                   </div>
                 </div>

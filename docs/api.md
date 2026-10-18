@@ -1642,6 +1642,155 @@ Retrieves project-wide upgrade candidate evaluations for all confirmed findings,
 - **`404 Not Found`**: Project not found (`NOT_FOUND`).
 - **`500 Internal Server Error`**: Database query failure (`INTERNAL_SERVER_ERROR`).
 
+---
+
+### 22. `POST /api/projects/{project_id}/simulations` (US-501 / US-502)
+
+Executes a dry-run fix simulation on an ephemeral in-memory graph overlay without mutating the real FalkorDB graph. Computes the delta of cleared findings, unchanged findings, newly introduced vulnerabilities, severed exposure paths, and SemVer breaking change risk.
+
+#### Request
+- **Method**: `POST`
+- **Path**: `/api/projects/{project_id}/simulations`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-Requested-With: vulnify`
+- **Body**:
+  ```json
+  {
+    "finding_id": "find-a1b2c3d4e5f67890",
+    "package_name": "express",
+    "current_version": "4.17.1",
+    "target_version": "4.18.2",
+    "ecosystem": "npm",
+    "service_id": null
+  }
+  ```
+
+#### Responses
+- **`200 OK`**: Complete simulation response with findings delta and verification checklist.
+  - **Body**:
+    ```json
+    {
+      "id": "sim-e90f238a",
+      "project_id": "893c5240-a19e-4c55-b8ea-a3d538eec612",
+      "package_name": "express",
+      "current_version": "4.17.1",
+      "target_version": "4.18.2",
+      "ecosystem": "npm",
+      "service_id": "893c5240-a19e-4c55-b8ea-a3d538eec612:web-svc",
+      "service_name": "web-svc",
+      "method": "simulated_from_metadata",
+      "method_description": "Evaluated on an in-memory graph overlay using OSV advisory version metadata and lockfile dependency paths without mutating stored graph data.",
+      "is_simulation": true,
+      "real_graph_mutated": false,
+      "baseline_id": "snap-a8c9e120f",
+      "is_transitive": false,
+      "path_depth": 1,
+      "paths_severed_count": 1,
+      "paths_remaining_count": 0,
+      "dependent_services": ["web-svc"],
+      "cleared_findings": [
+        {
+          "finding_id": "find-a1b2c3d4e5f67890",
+          "advisory_id": "GHSA-1234-abcd",
+          "package_name": "express",
+          "installed_version": "4.17.1",
+          "target_version": "4.18.2",
+          "severity": "HIGH",
+          "status": "expected_resolved",
+          "explanation": "Proposed version 4.18.2 is at or above verified fixed version 4.17.3 for advisory GHSA-1234-abcd.",
+          "source_url": "https://github.com/advisories/GHSA-1234-abcd"
+        }
+      ],
+      "unchanged_findings": [],
+      "newly_introduced_findings": [],
+      "total_findings_cleared": 1,
+      "total_findings_unchanged": 0,
+      "total_findings_introduced": 0,
+      "compatibility_status": "compatible",
+      "breaking_change_risk": "low",
+      "resolver_status": "not_evaluated",
+      "compatibility_caveats": [
+        "Minor/patch version upgrade: backward-compatible according to SemVer convention, but regression testing is always required.",
+        "Absence of detected conflicts does not guarantee runtime compatibility or application safety. Vulnify never claims an upgrade is safe to ship without project-level integration and regression testing."
+      ],
+      "checks_performed": [
+        {
+          "name": "Advisory Fixed Version Verification",
+          "status": "passed",
+          "description": "Evaluated 1 baseline finding(s) for express against target version 4.18.2. 1 expected to clear."
+        },
+        {
+          "name": "Graph Path Exposure Analysis",
+          "status": "passed",
+          "description": "Simulated severing of 1 vulnerable reachability path(s) on graph overlay."
+        },
+        {
+          "name": "SemVer Compatibility & Breaking Risk",
+          "status": "passed",
+          "description": "SemVer differential assessed as 'minor' jump with 'low' breaking change risk."
+        },
+        {
+          "name": "Package Manager Lockfile Resolution",
+          "status": "not_evaluated",
+          "description": "Graph simulation only; real package-manager resolution (npm/pip) was not executed."
+        },
+        {
+          "name": "Runtime Sandbox Execution",
+          "status": "not_evaluated",
+          "description": "Non-mutating metadata simulation; dynamic container execution not performed."
+        }
+      ],
+      "safety_disclaimer": "No upgrade is guaranteed safe to ship. Upstream fixed versions indicate that the security advisory reports the vulnerability as resolved in that release. Upgrades may introduce regressions, breaking changes, or undeclared side effects. Always run test suites and security validation before deploying to production.",
+      "created_at": 1729173000
+    }
+    ```
+- **`401 Unauthorized`**: Authentication required (`AUTHENTICATION_REQUIRED`).
+- **`404 Not Found`**: Project or finding not found (`NOT_FOUND`).
+- **`422 Unprocessable Entity`**: Invalid package/version inputs (`VALIDATION_ERROR`).
+- **`500 Internal Server Error`**: Simulation failure (`INTERNAL_SERVER_ERROR`).
+
+---
+
+### 23. `GET /api/projects/{project_id}/simulations` (US-501 / US-502)
+
+Retrieves recent fix simulations performed for the specified project.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/simulations`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### Responses
+- **`200 OK`**: List of recent simulation responses.
+  - **Body**:
+    ```json
+    {
+      "items": [ /* SimulationResponse objects */ ],
+      "total": 1
+    }
+    ```
+- **`401 Unauthorized`**: Authentication required.
+- **`404 Not Found`**: Project not found.
+
+---
+
+### 24. `GET /api/projects/{project_id}/simulations/{simulation_id}` (US-501 / US-502)
+
+Retrieves full details and verification checklist for a specific simulation run.
+
+#### Request
+- **Method**: `GET`
+- **Path**: `/api/projects/{project_id}/simulations/{simulation_id}`
+- **Headers**:
+  - `X-Requested-With: vulnify`
+
+#### Responses
+- **`200 OK`**: Specific `SimulationResponse` object.
+- **`401 Unauthorized`**: Authentication required.
+- **`404 Not Found`**: Simulation run not found.
+
 
 
 

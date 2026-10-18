@@ -479,5 +479,79 @@ export interface ProjectUpgradeCandidatesResponse {
   evaluated_at: number
 }
 
+// =====================================================================
+// US-501 / US-502: Fix Simulation Types
+// =====================================================================
+
+export type SimulationMethod = 'simulated_from_metadata' | 'verified_in_sandbox'
+export type SimulationCheckStatus = 'passed' | 'failed' | 'unknown' | 'not_evaluated'
+export type SimulationFindingStatus = 'expected_resolved' | 'still_affected' | 'newly_introduced' | 'unknown'
+
+export interface SimulationCheckItem {
+  name: string
+  status: SimulationCheckStatus
+  description: string
+}
+
+export interface SimulatedFindingDelta {
+  finding_id: string
+  advisory_id: string
+  package_name: string
+  installed_version: string
+  target_version: string
+  severity: string
+  status: SimulationFindingStatus
+  explanation: string
+  source_url?: string | null
+}
+
+export interface SimulationRequest {
+  finding_id?: string | null
+  package_name: string
+  current_version: string
+  target_version: string
+  ecosystem?: string
+  service_id?: string | null
+}
+
+export interface SimulationResponse {
+  id: string
+  project_id: string
+  package_name: string
+  current_version: string
+  target_version: string
+  ecosystem: string
+  service_id?: string | null
+  service_name?: string | null
+  method: SimulationMethod
+  method_description: string
+  is_simulation: boolean
+  real_graph_mutated: boolean
+  baseline_id: string
+  is_transitive: boolean
+  path_depth?: number | null
+  paths_severed_count: number
+  paths_remaining_count: number
+  dependent_services: string[]
+  cleared_findings: SimulatedFindingDelta[]
+  unchanged_findings: SimulatedFindingDelta[]
+  newly_introduced_findings: SimulatedFindingDelta[]
+  total_findings_cleared: number
+  total_findings_unchanged: number
+  total_findings_introduced: number
+  compatibility_status: CompatibilityStatus
+  breaking_change_risk: BreakingChangeRisk
+  resolver_status: string
+  compatibility_caveats: string[]
+  checks_performed: SimulationCheckItem[]
+  safety_disclaimer: string
+  created_at: number
+}
+
+export interface SimulationListResponse {
+  items: SimulationResponse[]
+  total: number
+}
+
 
 
