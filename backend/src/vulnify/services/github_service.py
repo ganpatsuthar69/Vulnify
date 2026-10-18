@@ -20,6 +20,11 @@ from typing import Any
 import httpx
 from fastapi import Depends, HTTPException, status
 
+from vulnify.agent.trust_boundary import (
+    quote_untrusted_markdown,
+    sanitize_untrusted_text,
+    verify_issue_body_structure,
+)
 from vulnify.config import Settings, get_settings
 from vulnify.graph.vulnerability_repository import (
     IVulnerabilityRepository,
@@ -197,13 +202,13 @@ class GitHubService:
             )
         target_repo = configured_repo
 
-        pkg_name = finding.get("package_name", "unknown")
-        curr_ver = finding.get("package_version", "unknown")
-        ecosystem = finding.get("ecosystem", "npm")
-        adv_id = finding.get("advisory_id", finding_id)
-        severity = finding.get("severity", "UNKNOWN")
+        pkg_name = sanitize_untrusted_text(str(finding.get("package_name", "unknown")))
+        curr_ver = sanitize_untrusted_text(str(finding.get("package_version", "unknown")))
+        ecosystem = sanitize_untrusted_text(str(finding.get("ecosystem", "npm")))
+        adv_id = sanitize_untrusted_text(str(finding.get("advisory_id", finding_id)))
+        severity = sanitize_untrusted_text(str(finding.get("severity", "UNKNOWN")))
         source_url = finding.get("source_url") or f"https://osv.dev/vulnerability/{adv_id}"
-        service_name = finding.get("service_name") or "Main Service"
+        service_name = sanitize_untrusted_text(str(finding.get("service_name") or "Main Service"))
         path_depth = finding.get("path_depth")
 
         # Determine target remediation version
@@ -211,10 +216,12 @@ class GitHubService:
         advisory_fixed = finding.get("advisory_fixed_versions") or []
         if not target_version and advisory_fixed:
             target_version = advisory_fixed[0]
+        if target_version:
+            target_version = sanitize_untrusted_text(str(target_version))
 
         # Issue title (US-503: default pattern uses real package name)
         if request.title_override and request.title_override.strip():
-            title = request.title_override.strip()
+            title = sanitize_untrusted_text(request.title_override.strip())
         else:
             title = f"[Vulnify] Review vulnerability in {pkg_name} ({adv_id})"
 
@@ -241,6 +248,20 @@ class GitHubService:
             safe_notes = sanitize_markdown_text(request.operator_notes)
             operator_section = f"\n### Operator Context & Notes\n{safe_notes}\n"
 
+        # US-604: Include upstream advisory summary safely quoted as untrusted data
+        advisory_section = ""
+        adv_summary = finding.get("advisory_summary")
+        adv_details = finding.get("advisory_details")
+        combined_adv = []
+        if adv_summary and str(adv_summary).strip():
+            combined_adv.append(str(adv_summary).strip())
+        if adv_details and str(adv_details).strip() and str(adv_details).strip() != str(adv_summary).strip():
+            combined_adv.append(str(adv_details).strip())
+        adv_text = "\n\n".join(combined_adv)
+        if adv_text:
+            quoted_adv = quote_untrusted_markdown(adv_text, label="Upstream Advisory Summary")
+            advisory_section = f"\n### Upstream Advisory Summary (Untrusted Data)\n{quoted_adv}\n"
+
         body = f"""## Vulnerability Remediation Request
 
 ### Target Package & Advisory
@@ -249,7 +270,7 @@ class GitHubService:
 - **Ecosystem:** `{ecosystem}`
 - **Advisory Reference:** [{adv_id}]({source_url})
 - **Severity Rating:** **{severity}**
-
+{advisory_section}
 ### Graph Evidence & Architecture Exposure
 - **Affected Service Component:** `{service_name}`
 - **Dependency Depth:** {depth_desc}
@@ -406,6 +427,24 @@ class GitHubService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Plan hash mismatch: the issue content or repository was modified after preview. Please re-preview the plan to review and approve changes.",
+            )
+
+        # 4b. Structural Integrity Verification (US-604)
+        if not verify_issue_body_structure(request.body):
+            self.record_audit_event(
+                actor=current_user.email,
+                action="create_github_issue",
+                project_id=project_id,
+                finding_id=finding_id,
+                plan_hash=request.plan_hash,
+                target_repo=target_repo,
+                result="rejected",
+                failure_category="corrupted_issue_body_structure",
+                request_id=req_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Issue body rejected: missing required structural remediation sections (US-604).",
             )
 
         # Concurrency safety: acquire per-plan lock to eliminate race conditions

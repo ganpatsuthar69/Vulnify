@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from vulnify.agent.registry import ToolDefinition
 from vulnify.agent.schemas import TraceFragment
+from vulnify.agent.trust_boundary import delimit_untrusted_data, sanitize_untrusted_text
 from vulnify.graph.vulnerability_repository import get_vulnerability_repository
 
 
@@ -37,6 +38,10 @@ class FindingDetailItem(BaseModel):
     advisory_id: str
     advisory_summary: str
     advisory_details: str
+    delimited_advisory_data: str = Field(
+        default="",
+        description="Delimited and sanitized untrusted advisory text with explicit agent notice (US-604)",
+    )
     severity: str
     priority: str
     priority_reasons: list[str] = Field(default_factory=list)
@@ -96,14 +101,25 @@ async def handle_get_finding_details(inputs: GetFindingDetailsInput) -> GetFindi
             trace=trace,
         )
 
+    raw_summary = finding_data.get("advisory_summary", "")
+    raw_details = finding_data.get("advisory_details", "")
+    combined_adv_text = raw_details or raw_summary
+
+    delimited_adv = delimit_untrusted_data(
+        combined_adv_text,
+        source="osv_advisory",
+        label=finding_data.get("advisory_id"),
+    )
+
     item = FindingDetailItem(
         id=finding_data.get("id", inputs.finding_id),
         project_id=inputs.project_id,
         service_id=finding_data.get("service_id", ""),
         service_name=finding_data.get("service_name", ""),
         advisory_id=finding_data.get("advisory_id", ""),
-        advisory_summary=finding_data.get("advisory_summary", ""),
-        advisory_details=finding_data.get("advisory_details", ""),
+        advisory_summary=sanitize_untrusted_text(raw_summary),
+        advisory_details=sanitize_untrusted_text(raw_details),
+        delimited_advisory_data=delimited_adv,
         severity=finding_data.get("severity", "UNKNOWN"),
         priority=finding_data.get("priority", "unknown"),
         priority_reasons=finding_data.get("priority_reasons", []),

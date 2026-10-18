@@ -1,0 +1,373 @@
+{
+  "$defs": {
+    "BenchmarkCase": {
+      "additionalProperties": false,
+      "description": "A single hand-verified benchmark question and answer specification.",
+      "properties": {
+        "id": {
+          "description": "Stable benchmark case ID (e.g. BM-001).",
+          "pattern": "^BM-\\d{3}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "description": "Short human-readable title.",
+          "minLength": 5,
+          "title": "Title",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/BenchmarkCategory",
+          "description": "Official benchmark category."
+        },
+        "difficulty": {
+          "$ref": "#/$defs/DifficultyLevel",
+          "description": "Difficulty rating."
+        },
+        "question": {
+          "description": "Natural language question to pose to the agent.",
+          "minLength": 10,
+          "title": "Question",
+          "type": "string"
+        },
+        "project_id": {
+          "description": "Target project ID in the graph or fixture.",
+          "minLength": 3,
+          "title": "Project Id",
+          "type": "string"
+        },
+        "service_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target service name if applicable.",
+          "title": "Service Name"
+        },
+        "package_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target package name if applicable.",
+          "title": "Package Name"
+        },
+        "package_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target package version if applicable.",
+          "title": "Package Version"
+        },
+        "advisory_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target advisory ID if applicable.",
+          "title": "Advisory Id"
+        },
+        "expected_answer": {
+          "$ref": "#/$defs/ExpectedAnswer",
+          "description": "Structured expected answer and validation criteria."
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationRecord",
+          "description": "Evidence verification metadata."
+        },
+        "reviews": {
+          "description": "Exactly two independent reviewer records (AC2).",
+          "items": {
+            "$ref": "#/$defs/ReviewRecord"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "title": "Reviews",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "category",
+        "difficulty",
+        "question",
+        "project_id",
+        "expected_answer",
+        "verification",
+        "reviews"
+      ],
+      "title": "BenchmarkCase",
+      "type": "object"
+    },
+    "BenchmarkCategory": {
+      "description": "The 5 official benchmark categories defined in US-801.",
+      "enum": [
+        "path_exists",
+        "no_path",
+        "exposure",
+        "ranking",
+        "remediation"
+      ],
+      "title": "BenchmarkCategory",
+      "type": "string"
+    },
+    "DifficultyLevel": {
+      "description": "Benchmark case difficulty level.",
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "title": "DifficultyLevel",
+      "type": "string"
+    },
+    "ExpectedAnswer": {
+      "additionalProperties": false,
+      "description": "Structured representation of verified expected answer criteria.",
+      "properties": {
+        "conclusion": {
+          "description": "Core concise answer conclusion.",
+          "minLength": 5,
+          "title": "Conclusion",
+          "type": "string"
+        },
+        "explanation": {
+          "description": "Detailed reasoning and architectural explanation.",
+          "minLength": 20,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "required_evidence": {
+          "description": "Specific factual evidence required (paths, depths, reasons).",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Required Evidence",
+          "type": "array"
+        },
+        "forbidden_claims": {
+          "description": "Incorrect or hallucinatory statements that must not appear.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Forbidden Claims",
+          "type": "array"
+        },
+        "required_caveats": {
+          "description": "Mandatory safety or uncertainty caveats (e.g. exposure != exploitability).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Caveats",
+          "type": "array"
+        }
+      },
+      "required": [
+        "conclusion",
+        "explanation",
+        "required_evidence",
+        "forbidden_claims"
+      ],
+      "title": "ExpectedAnswer",
+      "type": "object"
+    },
+    "ReviewRecord": {
+      "additionalProperties": false,
+      "description": "Record of an independent human review for a benchmark answer (AC2).",
+      "properties": {
+        "reviewer_id": {
+          "description": "Unique, stable identifier for the reviewer.",
+          "minLength": 3,
+          "title": "Reviewer Id",
+          "type": "string"
+        },
+        "role": {
+          "description": "Technical role of the reviewer (e.g. Security Graph Architect).",
+          "minLength": 3,
+          "title": "Role",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ReviewStatus",
+          "description": "Outcome of the review."
+        },
+        "reviewed_at": {
+          "description": "ISO 8601 timestamp of review.",
+          "title": "Reviewed At",
+          "type": "string"
+        },
+        "dataset_version": {
+          "description": "Dataset version reviewed (e.g. 1.0.0).",
+          "title": "Dataset Version",
+          "type": "string"
+        },
+        "notes": {
+          "description": "Reviewer comments confirming verification of ground truth evidence.",
+          "minLength": 5,
+          "title": "Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reviewer_id",
+        "role",
+        "status",
+        "reviewed_at",
+        "dataset_version",
+        "notes"
+      ],
+      "title": "ReviewRecord",
+      "type": "object"
+    },
+    "ReviewStatus": {
+      "description": "Review outcome for a single reviewer.",
+      "enum": [
+        "approved",
+        "changes_requested",
+        "pending",
+        "blocked"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    },
+    "VerificationRecord": {
+      "additionalProperties": false,
+      "description": "Ground truth verification provenance and method.",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/VerificationStatus",
+          "description": "Verification state of this expected answer."
+        },
+        "method": {
+          "description": "Evaluation method (e.g. graph_traversal_query, scoring_policy_v1.0.0).",
+          "minLength": 3,
+          "title": "Method",
+          "type": "string"
+        },
+        "query_or_tool": {
+          "description": "Underlying query ID or registered tool name used to verify ground truth.",
+          "minLength": 3,
+          "title": "Query Or Tool",
+          "type": "string"
+        },
+        "evidence_provenance": {
+          "description": "Data provenance (e.g. synthetic_fixture, service_manifest, osv_advisory).",
+          "minLength": 3,
+          "title": "Evidence Provenance",
+          "type": "string"
+        },
+        "verified_at": {
+          "description": "ISO 8601 timestamp of verification.",
+          "title": "Verified At",
+          "type": "string"
+        },
+        "verification_notes": {
+          "description": "Technical rationale verifying accuracy against project data.",
+          "minLength": 10,
+          "title": "Verification Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "method",
+        "query_or_tool",
+        "evidence_provenance",
+        "verified_at",
+        "verification_notes"
+      ],
+      "title": "VerificationRecord",
+      "type": "object"
+    },
+    "VerificationStatus": {
+      "description": "Ground truth evidence verification state.",
+      "enum": [
+        "verified",
+        "pending",
+        "blocked"
+      ],
+      "title": "VerificationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Top-level container for the version-controlled benchmark dataset.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "description": "Schema version.",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "dataset_version": {
+      "default": "1.0.0",
+      "description": "Dataset semantic version.",
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "dataset_title": {
+      "description": "Dataset title.",
+      "minLength": 5,
+      "title": "Dataset Title",
+      "type": "string"
+    },
+    "description": {
+      "description": "Overview and purpose.",
+      "minLength": 10,
+      "title": "Description",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "Creation ISO timestamp.",
+      "title": "Created At",
+      "type": "string"
+    },
+    "updated_at": {
+      "description": "Last update ISO timestamp.",
+      "title": "Updated At",
+      "type": "string"
+    },
+    "cases": {
+      "description": "List of benchmark cases.",
+      "items": {
+        "$ref": "#/$defs/BenchmarkCase"
+      },
+      "minItems": 1,
+      "title": "Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "dataset_title",
+    "description",
+    "created_at",
+    "updated_at",
+    "cases"
+  ],
+  "title": "BenchmarkDataset",
+  "type": "object"
+}

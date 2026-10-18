@@ -37,6 +37,11 @@ from vulnify.graph.agent_run_repository import (
     get_agent_run_repository,
     sanitize_tool_inputs,
 )
+from vulnify.agent.trust_boundary import (
+    delimit_untrusted_data,
+    quote_untrusted_markdown,
+    sanitize_untrusted_text,
+)
 from vulnify.graph.project_repository import IProjectRepository, get_project_repository
 
 logger = logging.getLogger("vulnify")
@@ -468,6 +473,7 @@ class AgentOrchestrator:
                 wants_paths=wants_paths,
                 wants_ranking=wants_ranking,
                 wants_remediation=wants_remediation,
+                wants_explanation=wants_explanation,
             )
 
             # Stream answer incrementally in natural chunks
@@ -556,6 +562,7 @@ class AgentOrchestrator:
         wants_paths: bool,
         wants_ranking: bool,
         wants_remediation: bool,
+        wants_explanation: bool = False,
     ) -> str:
         """Synthesize honest, evidence-grounded answer based strictly on real tool outputs."""
         if not findings:
@@ -614,6 +621,11 @@ class AgentOrchestrator:
                 lines.append(f"- **Remediation Target:** Upgrade to version `{target_finding.fixed_version}`.")
             else:
                 lines.append("- **Remediation Status:** No official fixed version recorded in advisory metadata.")
+
+            # US-604: Quote upstream advisory description safely as untrusted data
+            adv_text = getattr(target_finding, "advisory_summary", None) or getattr(target_finding, "advisory_details", None)
+            if adv_text and (wants_explanation or "advisory" in query.lower() or "detail" in query.lower()):
+                lines.append(f"\n{quote_untrusted_markdown(adv_text, label='Upstream Advisory Description')}")
 
         # 4. Remediation section if requested
         if wants_remediation:

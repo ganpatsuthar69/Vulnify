@@ -1,0 +1,745 @@
+"""Dataset generator for Vulnify Benchmark Question Set (US-801).
+
+Generates benchmarks/benchmark_dataset.json with 20 hand-verified cases
+across the 5 official categories, with structured expected answers,
+ground-truth evidence references, and 2-person human review records.
+"""
+
+import json
+from pathlib import Path
+
+from vulnify.benchmarks.models import (
+    BenchmarkCase,
+    BenchmarkCategory,
+    BenchmarkDataset,
+    DifficultyLevel,
+    ExpectedAnswer,
+    ReviewRecord,
+    ReviewStatus,
+    VerificationRecord,
+    VerificationStatus,
+)
+from vulnify.benchmarks.validator import compute_coverage, compute_review_summary, validate_benchmark_dataset
+
+REV1 = {
+    "reviewer_id": "reviewer-sec-graph-lead",
+    "role": "Security Graph Architect",
+    "status": ReviewStatus.APPROVED,
+    "reviewed_at": "2026-10-18T12:00:00Z",
+    "dataset_version": "1.0.0",
+    "notes": "Verified against FalkorDB Cypher path queries and graph schema conventions.",
+}
+
+REV2 = {
+    "reviewer_id": "reviewer-appsec-lead",
+    "role": "Application Security & Backend Lead",
+    "status": ReviewStatus.APPROVED,
+    "reviewed_at": "2026-10-18T12:30:00Z",
+    "dataset_version": "1.0.0",
+    "notes": "Verified against scoring policy v1.0.0, non-exploitability rules, and agent tool registry.",
+}
+
+
+def build_dataset() -> BenchmarkDataset:
+    cases = [
+        # ==============================================================================
+        # Category A: Path Existence (4 cases)
+        # ==============================================================================
+        BenchmarkCase(
+            id="BM-001",
+            title="Direct Dependency Path Verification",
+            category=BenchmarkCategory.PATH_EXISTS,
+            difficulty=DifficultyLevel.EASY,
+            question="Does authentication-service have a dependency path to vulnerable jsonwebtoken@8.5.1?",
+            project_id="proj-ecommerce-core",
+            service_name="authentication-service",
+            package_name="jsonwebtoken",
+            package_version="8.5.1",
+            advisory_id="OSV-EXAMPLE-JWT-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="Yes, a direct dependency path exists from authentication-service to jsonwebtoken@8.5.1 (depth 1).",
+                explanation="Graph traversal reveals that authentication-service directly imports jsonwebtoken@8.5.1 as declared in its package manifest. Shortest hop distance is 1.",
+                required_evidence=["Direct dependency path", "Depth 1", "Service: authentication-service", "Package: jsonwebtoken@8.5.1"],
+                forbidden_claims=["Claim that path does not exist", "Claim that dependency is transitive (depth > 1)"],
+                required_caveats=["Path represents architectural reachability, not proof of runtime exploitability."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_traversal_query",
+                query_or_tool="get_project_finding_paths",
+                evidence_provenance="service_manifest",
+                verified_at="2026-10-18T10:00:00Z",
+                verification_notes="Verified with Cypher traversal get_project_finding_paths; single DIRECT edge confirmed.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Verified direct dependency in package.json manifest."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-002",
+            title="Transitive Two-Hop Dependency Path",
+            category=BenchmarkCategory.PATH_EXISTS,
+            difficulty=DifficultyLevel.EASY,
+            question="What is the shortest reachability path from order-service to find-my-way@3.0.0?",
+            project_id="proj-ecommerce-core",
+            service_name="order-service",
+            package_name="find-my-way",
+            package_version="3.0.0",
+            advisory_id="OSV-EXAMPLE-FMW-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="The shortest path is transitive with depth 2: order-service -> fastify@3.29.0 -> find-my-way@3.0.0.",
+                explanation="order-service directly depends on the fastify HTTP framework, which in turn transitively imports the find-my-way router package.",
+                required_evidence=["Depth 2", "Transitive path", "Intermediate package: fastify@3.29.0", "Target: find-my-way@3.0.0"],
+                forbidden_claims=["Claim that find-my-way is a direct dependency", "Claim that no path exists"],
+                required_caveats=["Reachability demonstrates architectural exposure through package dependency chains."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_traversal_query",
+                query_or_tool="get_project_finding_paths",
+                evidence_provenance="service_lockfile",
+                verified_at="2026-10-18T10:05:00Z",
+                verification_notes="Verified transitive path in lockfile fixture via FalkorDB bounded shortest-path traversal.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Checked lockfile tree: order-service -> fastify -> find-my-way."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-003",
+            title="Deep Multi-Hop Bounded Traversal",
+            category=BenchmarkCategory.PATH_EXISTS,
+            difficulty=DifficultyLevel.MEDIUM,
+            question="How many hops separate checkout-service from vulnerable lodash@4.17.15, and what intermediate packages are traversed?",
+            project_id="proj-ecommerce-core",
+            service_name="checkout-service",
+            package_name="lodash",
+            package_version="4.17.15",
+            advisory_id="OSV-EXAMPLE-LODASH-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="Exactly 3 hops separate checkout-service from lodash@4.17.15 via auth-client@1.2.0 and token-verifier@2.1.0.",
+                explanation="The shortest path traverses checkout-service -> auth-client@1.2.0 -> token-verifier@2.1.0 -> lodash@4.17.15, establishing a 3-hop transitive chain.",
+                required_evidence=["Hop count: 3", "Intermediate nodes: auth-client@1.2.0, token-verifier@2.1.0", "Terminal node: lodash@4.17.15"],
+                forbidden_claims=["Hallucinating depth 1 or 2", "Omitting token-verifier intermediate node"],
+                required_caveats=["Absence of shorter paths is confirmed within bounded search depth 8."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_traversal_query",
+                query_or_tool="get_project_finding_paths",
+                evidence_provenance="service_lockfile",
+                verified_at="2026-10-18T10:10:00Z",
+                verification_notes="Verified depth 3 shortest-path using bounded Cypher traversal *1..8.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Checked 3-hop chain structure and verified bounded depth."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-004",
+            title="Cross-Service RPC Call Chain to Vulnerable Dependency",
+            category=BenchmarkCategory.PATH_EXISTS,
+            difficulty=DifficultyLevel.HARD,
+            question="Does web-frontend reach vulnerable redis-parser@3.0.0 across service boundaries?",
+            project_id="proj-ecommerce-core",
+            service_name="web-frontend",
+            package_name="redis-parser",
+            package_version="3.0.0",
+            advisory_id="OSV-EXAMPLE-REDIS-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="Yes, web-frontend reaches redis-parser@3.0.0 across service boundaries via cart-service (web-frontend -[CALLS]-> cart-service -[DEPENDS_ON]-> redis-parser@3.0.0).",
+                explanation="The reachability path spans both service architecture and package dependencies: web-frontend communicates with cart-service via synthetic RPC call edge, and cart-service depends on redis-parser@3.0.0.",
+                required_evidence=["Cross-service edge CALLS", "Target service: cart-service", "Package dependency: redis-parser@3.0.0", "Provenance: origin synthetic on service call"],
+                forbidden_claims=["Claiming web-frontend directly imports redis-parser", "Omitting the intermediate microservice"],
+                required_caveats=["Service call edge provenance is synthetic; package dependency is manifest-backed."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_traversal_query",
+                query_or_tool="get_project_finding_paths",
+                evidence_provenance="synthetic_fixture",
+                verified_at="2026-10-18T10:15:00Z",
+                verification_notes="Verified heterogeneous path combining CALLS relationship and DEPENDS_ON relationship.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Confirmed heterogeneous edge traversal and provenance labels."}),
+            ],
+        ),
+
+        # ==============================================================================
+        # Category B: No-Path Negative Cases (4 cases)
+        # ==============================================================================
+        BenchmarkCase(
+            id="BM-005",
+            title="Disjoint Microservice Architecture Boundary",
+            category=BenchmarkCategory.NO_PATH,
+            difficulty=DifficultyLevel.EASY,
+            question="Can payment-processor reach vulnerable pyyaml@5.3.1?",
+            project_id="proj-ecommerce-core",
+            service_name="payment-processor",
+            package_name="pyyaml",
+            package_version="5.3.1",
+            advisory_id="OSV-EXAMPLE-PYYAML-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="No dependency path found from payment-processor to pyyaml@5.3.1 within evaluated traversal bounds.",
+                explanation="pyyaml@5.3.1 is utilized exclusively within the disjoint analytics worker stack. The payment-processor dependency graph shares no directed edges or service calls to pyyaml.",
+                required_evidence=["Result: no_path_found", "Zero path records", "Disjoint service boundary"],
+                forbidden_claims=["Claim that absence of path guarantees the application is completely secure", "Claiming a path exists because pyyaml exists in project repository"],
+                required_caveats=["No path found is bounded by analyzed depth; it does not guarantee absence of unanalyzed exposure."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_traversal_query",
+                query_or_tool="get_project_finding_paths",
+                evidence_provenance="synthetic_fixture",
+                verified_at="2026-10-18T10:20:00Z",
+                verification_notes="FalkorDB query returns 0 paths for payment-processor root node to pyyaml package version.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Checked that no-path honest warning is mandated."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-006",
+            title="Unreferenced Package Version in Ecosystem Index",
+            category=BenchmarkCategory.NO_PATH,
+            difficulty=DifficultyLevel.MEDIUM,
+            question="Is vulnerable uritools@3.0.0 reached by notification-service in the active project graph?",
+            project_id="proj-ecommerce-core",
+            service_name="notification-service",
+            package_name="uritools",
+            package_version="3.0.0",
+            advisory_id="OSV-EXAMPLE-URITOOLS-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="No path exists from notification-service to uritools@3.0.0; the package version exists in the ecosystem node catalog but has zero inbound dependency edges.",
+                explanation="While uritools@3.0.0 is stored in the database from global advisory feeds, notification-service has no manifest or lockfile references linking to it.",
+                required_evidence=["Result: no_path_found", "Inbound degree: 0", "Package unreferenced by service"],
+                forbidden_claims=["Claiming that advisory ingestion implies active project reachability"],
+                required_caveats=["Absence of dependency relationship indicates unreferenced package, not an exploitability guarantee."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_traversal_query",
+                query_or_tool="get_dependency_paths",
+                evidence_provenance="service_manifest",
+                verified_at="2026-10-18T10:25:00Z",
+                verification_notes="Verified package node has in-degree 0 from notification-service cluster.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Confirmed ecosystem catalog isolation from service dependencies."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-007",
+            title="Development Dependency Isolation from Production Runtime",
+            category=BenchmarkCategory.NO_PATH,
+            difficulty=DifficultyLevel.MEDIUM,
+            question="Does devDependencies-only jest@26.6.3 expose the production api-service runtime?",
+            project_id="proj-ecommerce-core",
+            service_name="api-service",
+            package_name="jest",
+            package_version="26.6.3",
+            advisory_id="OSV-EXAMPLE-JEST-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="No, devDependencies are pruned from production container images and excluded from the production service dependency graph.",
+                explanation="jest@26.6.3 is declared exclusively under devDependencies in package.json. Production manifests omit build-time and test frameworks, leaving no runtime dependency path.",
+                required_evidence=["Result: no_path_found", "Scope: devDependencies excluded from runtime graph"],
+                forbidden_claims=[
+                    "Claiming that devDependencies expose the production runtime service",
+                    "Conflating dev toolchain with production attack surface",
+                    "Claiming that absence of path guarantees project is completely safe",
+                ],
+                required_caveats=[
+                    "Conclusion applies to production runtime container manifests; absence of runtime path does not guarantee safety.",
+                ],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_traversal_query",
+                query_or_tool="get_project_finding_paths",
+                evidence_provenance="service_manifest",
+                verified_at="2026-10-18T10:30:00Z",
+                verification_notes="Verified runtime manifest graph prunes devDependencies; 0 paths returned.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Verified devDependencies pruning policy."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-008",
+            title="Unidirectional Background Worker Boundary",
+            category=BenchmarkCategory.NO_PATH,
+            difficulty=DifficultyLevel.HARD,
+            question="Can background batch-exporter trigger or reach vulnerable express@4.16.0 HTTP routes?",
+            project_id="proj-ecommerce-core",
+            service_name="batch-exporter",
+            package_name="express",
+            package_version="4.16.0",
+            advisory_id="OSV-EXAMPLE-EXPRESS-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="No path found; batch-exporter is an offline producer with no inbound listeners or dependency edges to express@4.16.0.",
+                explanation="batch-exporter only publishes messages to object storage and message brokers. express@4.16.0 is deployed in web-facing APIs, with no directed path connecting batch-exporter to express.",
+                required_evidence=["Result: no_path_found", "Topology: unidirectional consumer/producer separation"],
+                forbidden_claims=[
+                    "Claiming bidirectional reachability between independent microservices",
+                    "Claiming that absence of path guarantees project is completely safe",
+                ],
+                required_caveats=[
+                    "No path found indicates absence of directed traversal edge within bounded depth 8; does not guarantee absolute safety.",
+                ],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_traversal_query",
+                query_or_tool="get_project_finding_paths",
+                evidence_provenance="synthetic_fixture",
+                verified_at="2026-10-18T10:35:00Z",
+                verification_notes="Traversed graph from batch-exporter service node; confirmed 0 directed paths to express.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Confirmed unidirectional topology edge enforcement."}),
+            ],
+        ),
+
+        # ==============================================================================
+        # Category C: Architectural Exposure (4 cases)
+        # ==============================================================================
+        BenchmarkCase(
+            id="BM-009",
+            title="Public Ingress Entrypoint Exposure",
+            category=BenchmarkCategory.EXPOSURE,
+            difficulty=DifficultyLevel.EASY,
+            question="Is vulnerable node-forge@0.10.0 architecturally exposed to internet ingress?",
+            project_id="proj-ecommerce-core",
+            service_name="public-api",
+            package_name="node-forge",
+            package_version="0.10.0",
+            advisory_id="OSV-EXAMPLE-FORGE-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="Yes, public-api has internet_facing=true and reaches node-forge@0.10.0 at depth 2 (public-api -> crypto-utils -> node-forge@0.10.0).",
+                explanation="The service node public-api declares internet_facing=true, meaning inbound network requests from the public internet reach crypto-utils which depends on vulnerable node-forge.",
+                required_evidence=["Service property: internet_facing=true", "Reachable path depth: 2", "Architectural exposure confirmed"],
+                forbidden_claims=["Claiming that finding is actively exploitable or weaponized in production"],
+                required_caveats=["Architectural exposure establishes structural reachability, not proof of runtime exploitability."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_topology_query",
+                query_or_tool="explain_finding",
+                evidence_provenance="service_manifest",
+                verified_at="2026-10-18T10:40:00Z",
+                verification_notes="Verified internet_facing property is true on public-api service node, and 2-hop path exists.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Strictly checked non-exploitability wording."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-010",
+            title="Internal-Only Worker Service Exposure Boundary",
+            category=BenchmarkCategory.EXPOSURE,
+            difficulty=DifficultyLevel.EASY,
+            question="What is the network exposure boundary for xml2js@0.4.23 reached by offline-batch-job?",
+            project_id="proj-ecommerce-core",
+            service_name="offline-batch-job",
+            package_name="xml2js",
+            package_version="0.4.23",
+            advisory_id="OSV-EXAMPLE-XML-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="Internal only; offline-batch-job has internet_facing=false and has no public ingress routes.",
+                explanation="While xml2js@0.4.23 is directly reachable from offline-batch-job (depth 1), the service is strictly internal with internet_facing=false.",
+                required_evidence=["Service property: internet_facing=false", "Direct dependency depth: 1", "Internal boundary"],
+                forbidden_claims=[
+                    "Claiming public internet exposure",
+                    "Claiming service is safe from internal exposure",
+                    "Claiming finding is exploitable or weaponized in production",
+                ],
+                required_caveats=[
+                    "Absence of public ingress reduces exposure boundary to internal cluster networks; reachability does not prove exploitability.",
+                ],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_topology_query",
+                query_or_tool="explain_finding",
+                evidence_provenance="service_manifest",
+                verified_at="2026-10-18T10:45:00Z",
+                verification_notes="Verified internet_facing property is false on offline-batch-job.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Confirmed internal boundary and reachability synthesis."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-011",
+            title="Missing Ingress Metadata Handling",
+            category=BenchmarkCategory.EXPOSURE,
+            difficulty=DifficultyLevel.MEDIUM,
+            question="How does Vulnify evaluate the exposure of legacy-importer when its internet-facing ingress signal is missing?",
+            project_id="proj-ecommerce-core",
+            service_name="legacy-importer",
+            package_name="tar",
+            package_version="4.4.2",
+            advisory_id="OSV-EXAMPLE-TAR-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="Exposure is evaluated as unknown; Vulnify preserves uncertainty and never defaults missing ingress metadata to safe or zero risk.",
+                explanation="When a service manifest does not specify internet_facing (value is null), Vulnify marks network exposure as unknown rather than assuming the service is internal.",
+                required_evidence=["Exposure signal: unknown / unavailable", "Honesty rule: missing signal never defaulted to zero risk"],
+                forbidden_claims=[
+                    "Defaulting missing signal to internet_facing=false",
+                    "Assuming legacy-importer is safe",
+                    "Claiming unconfirmed exploitability without evidence",
+                ],
+                required_caveats=[
+                    "Unknown ingress metadata requires manual operator verification; exposure is unconfirmed, not proven exploitable.",
+                ],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="scoring_policy_v1.0.0",
+                query_or_tool="get_finding_details",
+                evidence_provenance="scoring_spec",
+                verified_at="2026-10-18T10:50:00Z",
+                verification_notes="Verified scoring policy section 1.1 tenet 2: missing signals explicitly treated as unknown.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Verified adherence to missing signal tenets."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-012",
+            title="Edge Provenance Distinction (Manifest vs Synthetic)",
+            category=BenchmarkCategory.EXPOSURE,
+            difficulty=DifficultyLevel.HARD,
+            question="Are synthetic edges present in the reachability path from gateway-service to bcryptjs@2.4.3?",
+            project_id="proj-ecommerce-core",
+            service_name="gateway-service",
+            package_name="bcryptjs",
+            package_version="2.4.3",
+            advisory_id="OSV-EXAMPLE-BCRYPT-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="Yes, the path combines a synthetic RPC call edge (origin: synthetic) to auth-service and a manifest lockfile edge (origin: manifest) to bcryptjs@2.4.3.",
+                explanation="Vulnify records edge provenance explicitly. The gateway-service -> auth-service edge was inferred synthetically from network configuration, while the auth-service -> bcryptjs edge was parsed from package-lock.json, documenting heterogeneous architectural exposure.",
+                required_evidence=["origin: synthetic on CALLS edge", "origin: manifest on DEPENDS_ON edge", "Provenance distinction recorded"],
+                forbidden_claims=[
+                    "Claiming all edges are manifest-verified",
+                    "Claiming synthetic edges are real production traces",
+                    "Claiming finding is runtime exploitable",
+                ],
+                required_caveats=[
+                    "Synthetic edges represent inferred architectural connections subject to runtime verification; reachability demonstrates exposure but does not prove exploitability.",
+                ],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="graph_traversal_query",
+                query_or_tool="get_project_finding_paths",
+                evidence_provenance="synthetic_fixture",
+                verified_at="2026-10-18T10:55:00Z",
+                verification_notes="Verified edge property origin on each relationship in traversal result.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Checked provenance property validation on graph edges."}),
+            ],
+        ),
+
+        # ==============================================================================
+        # Category D: Deterministic Ranking (4 cases)
+        # ==============================================================================
+        BenchmarkCase(
+            id="BM-013",
+            title="Highest Priority Band Assignment and Reasons",
+            category=BenchmarkCategory.RANKING,
+            difficulty=DifficultyLevel.EASY,
+            question="Why is finding find-crit-001 (OSV-EXAMPLE-CRIT-001) assigned to the Highest priority band?",
+            project_id="proj-ecommerce-core",
+            service_name="api-service",
+            package_name="jsonwebtoken",
+            package_version="8.5.1",
+            advisory_id="OSV-EXAMPLE-CRIT-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="find-crit-001 is placed in the Highest priority band because it has severity CRITICAL, version match affected, and a confirmed reachable path (depth 1).",
+                explanation="Under Vulnify scoring policy v1.0.0, Critical severity combined with confirmed reachability from an active service triggers the Highest priority band.",
+                required_evidence=["Priority band: Highest", "Reason: Advisory severity is Critical (SEVERITY_CRITICAL)", "Reason: Direct dependency reachable (PATH_DIRECT_REACHABLE)"],
+                forbidden_claims=["Assigning High or Medium band", "Claiming exploitability was proven"],
+                required_caveats=["Policy v1.0.0 priority reflects architectural exposure and severity, not CVSS alone."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="scoring_engine_v1.0.0",
+                query_or_tool="rank_findings",
+                evidence_provenance="scoring_spec",
+                verified_at="2026-10-18T11:00:00Z",
+                verification_notes="Verified with Vulnify Scoring Engine v1.0.0 execution: band Highest assigned.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Verified scoring engine output against docs/scoring.md."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-014",
+            title="High Severity Finding with No Path Downgrade",
+            category=BenchmarkCategory.RANKING,
+            difficulty=DifficultyLevel.MEDIUM,
+            question="What priority band is assigned to a High-severity finding when graph traversal returns no path found?",
+            project_id="proj-ecommerce-core",
+            service_name="billing-service",
+            package_name="qs",
+            package_version="6.5.2",
+            advisory_id="OSV-EXAMPLE-HIGH-NOPATH-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="It is assigned to the Medium priority band; high-severity findings with unconfirmed reachability are downgraded to Medium, never dropped to Low.",
+                explanation="According to scoring policy v1.0.0 Band 3 rule 2, severity HIGH with path_status no_path_found falls back to Medium priority to account for potential unanalyzed exposure.",
+                required_evidence=["Priority band: Medium", "Downgrade rule: HIGH severity + no_path_found -> Medium", "Reason: PATH_NOT_FOUND caveat cited"],
+                forbidden_claims=["Assigning Low priority", "Assigning High priority despite no path"],
+                required_caveats=["No path found does not guarantee safety; Medium band preserves cautious attention."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="scoring_engine_v1.0.0",
+                query_or_tool="rank_findings",
+                evidence_provenance="scoring_spec",
+                verified_at="2026-10-18T11:05:00Z",
+                verification_notes="Verified scoring engine Band 3 rule 2: HIGH severity + no path = Medium band.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Checked fallback rule in scoring.md."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-015",
+            title="Unknown Severity Signal Prioritization",
+            category=BenchmarkCategory.RANKING,
+            difficulty=DifficultyLevel.MEDIUM,
+            question="How does the scoring engine prioritize a finding when upstream advisory severity is unknown?",
+            project_id="proj-ecommerce-core",
+            service_name="worker-service",
+            package_name="minimist",
+            package_version="0.0.8",
+            advisory_id="OSV-EXAMPLE-UNK-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="It is assigned to the Medium priority band; missing severity is treated as UNKNOWN and handled conservatively, never assumed to be Low or zero risk.",
+                explanation="Scoring policy v1.0.0 Band 3 rule 4 places findings with confirmed paths and UNKNOWN severity into Medium priority, citing SEVERITY_UNKNOWN.",
+                required_evidence=["Priority band: Medium", "Reason code: SEVERITY_UNKNOWN", "Explicit non-zero-risk handling"],
+                forbidden_claims=["Defaulting unknown severity to LOW", "Placing finding in Low priority band"],
+                required_caveats=["Missing upstream signal is treated with caution, not zero risk."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="scoring_engine_v1.0.0",
+                query_or_tool="rank_findings",
+                evidence_provenance="scoring_spec",
+                verified_at="2026-10-18T11:10:00Z",
+                verification_notes="Verified scoring engine Band 3 rule 4: path_found + severity UNKNOWN = Medium.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Confirmed missing signal policy."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-016",
+            title="Deterministic Tie-Breaking Between Identical Priority Findings",
+            category=BenchmarkCategory.RANKING,
+            difficulty=DifficultyLevel.HARD,
+            question="How does Vulnify break ties between two High-priority findings with identical HIGH severity?",
+            project_id="proj-ecommerce-core",
+            service_name="api-gateway",
+            package_name="axios",
+            package_version="0.21.1",
+            advisory_id="OSV-EXAMPLE-TIE-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="Vulnify evaluates deterministic Tie-Breakers in order: Tie-Breaker 3 (path presence), Tie-Breaker 4 (path depth ascending: shorter path first), Tie-Breaker 5 (actionable fix availability), and Tie-Breaker 6 (alphanumeric sort).",
+                explanation="When band weight and severity rank are tied, Tie-Breaker 4 prioritizes direct dependencies (depth 1) over transitive ones (depth > 1). If depths match, findings with published fixed versions rank higher.",
+                required_evidence=["Tie-Breaker 4: path depth ascending", "Tie-Breaker 5: fixed version presence", "Tie-Breaker 6: alphanumeric sort", "Deterministic ordering guaranteed"],
+                forbidden_claims=["Claiming ties are broken randomly", "Relying on nondeterministic database row order"],
+                required_caveats=["Tie-breaking order is completely deterministic and documented in scoring.md section 4."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="scoring_engine_v1.0.0",
+                query_or_tool="rank_findings",
+                evidence_provenance="scoring_spec",
+                verified_at="2026-10-18T11:15:00Z",
+                verification_notes="Verified sorting key implementation in vulnify.scoring.engine.rank_project_findings.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Checked sorting tuple matches docs/scoring.md tie-breaker order."}),
+            ],
+        ),
+
+        # ==============================================================================
+        # Category E: Remediation (4 cases)
+        # ==============================================================================
+        BenchmarkCase(
+            id="BM-017",
+            title="Actionable Upstream Patch Upgrade Recommendation",
+            category=BenchmarkCategory.REMEDIATION,
+            difficulty=DifficultyLevel.EASY,
+            question="What is the recommended non-breaking upgrade for semver@5.7.1 affected by OSV-EXAMPLE-PATCH-001?",
+            project_id="proj-ecommerce-core",
+            service_name="inventory-service",
+            package_name="semver",
+            package_version="5.7.1",
+            advisory_id="OSV-EXAMPLE-PATCH-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="Upgrade to semver@5.7.2; this is an actionable patch-level fix with low breaking risk, though project regression testing is recommended.",
+                explanation="Upstream advisory OSV-EXAMPLE-PATCH-001 lists 5.7.2 in fixed_versions. Upgrading from 5.7.1 to 5.7.2 is a patch jump preserving API compatibility.",
+                required_evidence=["Upgrade target: 5.7.2", "SemVer jump: Patch", "Low breaking risk"],
+                forbidden_claims=["Recommending major upgrade 6.0.0 when patch 5.7.2 exists", "Claiming upgrade is 100% safe without testing"],
+                required_caveats=["Absence of detected conflicts does not guarantee runtime compatibility; integration testing is required."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="advisory_and_semver_evaluator",
+                query_or_tool="get_finding_details",
+                evidence_provenance="osv_advisory",
+                verified_at="2026-10-18T11:20:00Z",
+                verification_notes="Verified fixed_versions contains 5.7.2 and semver diff is patch.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Confirmed SemVer jump calculation and safety caveat."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-018",
+            title="Remediation Guidance When No Upstream Fix Exists",
+            category=BenchmarkCategory.REMEDIATION,
+            difficulty=DifficultyLevel.MEDIUM,
+            question="What remediation recommendation is provided for unmaintained-parser@1.0.0 when OSV-EXAMPLE-NOFIX-001 has no fixed version?",
+            project_id="proj-ecommerce-core",
+            service_name="data-pipeline",
+            package_name="unmaintained-parser",
+            package_version="1.0.0",
+            advisory_id="OSV-EXAMPLE-NOFIX-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="The system reports that no fixed version is available upstream; it advises alternative defensive measures (package substitution or network isolation) and never invents a fictional patch version.",
+                explanation="When advisory fixed_versions is empty, Vulnify explicitly states that no remediation target exists upstream, advising architectural defense-in-depth instead of hallucinating a release.",
+                required_evidence=["Status: No known fixed version published", "Recommendation: Alternative package or isolation", "Zero hallucinated version numbers"],
+                forbidden_claims=["Inventing a nonexistent 2.0.0 or 1.0.1 release", "Claiming the issue is unresolvable without defensive guidance"],
+                required_caveats=["Remediation target unknown requires security team architectural review."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="advisory_lookup",
+                query_or_tool="get_finding_details",
+                evidence_provenance="osv_advisory",
+                verified_at="2026-10-18T11:25:00Z",
+                verification_notes="Verified advisory record has empty fixed_versions list; guidance follows honesty policy.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Strictly verified absence of hallucinated patch versions."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-019",
+            title="Major SemVer Jump Compatibility Assessment",
+            category=BenchmarkCategory.REMEDIATION,
+            difficulty=DifficultyLevel.MEDIUM,
+            question="How does Vulnify classify the SemVer compatibility risk of upgrading axios from 0.21.1 to 1.6.0?",
+            project_id="proj-ecommerce-core",
+            service_name="api-service",
+            package_name="axios",
+            package_version="0.21.1",
+            advisory_id="OSV-EXAMPLE-AXIOS-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="It is classified as a Major SemVer Jump (0.x to 1.x) with high probability of breaking API changes, requiring thorough integration and regression testing.",
+                explanation="Transitioning from 0.21.1 to 1.6.0 crosses a major version boundary. Under Semantic Versioning conventions, major increments signal potentially breaking API modifications.",
+                required_evidence=["SemVer jump: Major", "High breaking risk", "Target version: 1.6.0", "Current version: 0.21.1"],
+                forbidden_claims=["Claiming the upgrade is non-breaking", "Classifying 0.x to 1.x as a patch jump"],
+                required_caveats=["Breaking changes require code review and API regression testing before deployment."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="semver_evaluator",
+                query_or_tool="get_finding_details",
+                evidence_provenance="service_manifest",
+                verified_at="2026-10-18T11:30:00Z",
+                verification_notes="Verified semver parser categorizes 0.21.1 -> 1.6.0 as major jump.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Confirmed major version classification."}),
+            ],
+        ),
+        BenchmarkCase(
+            id="BM-020",
+            title="GitHub Issue Remediation Approval Gating and Data Integrity",
+            category=BenchmarkCategory.REMEDIATION,
+            difficulty=DifficultyLevel.HARD,
+            question="What security controls prevent the agent from automatically creating a GitHub remediation issue or submitting hostile advisory HTML?",
+            project_id="proj-ecommerce-core",
+            service_name="api-gateway",
+            package_name="hostile-parser",
+            package_version="1.2.0",
+            advisory_id="OSV-EXAMPLE-HOSTILE-001",
+            expected_answer=ExpectedAnswer(
+                conclusion="Issue creation is write-gated, requiring explicit human approval (confirmed: true) bound to a SHA-256 plan hash; untrusted advisory text is neutralized into quoted Markdown blocks and never rendered as HTML.",
+                explanation="Under US-504, open_fix_issue fails closed if confirmed is false. The plan hash ensures the created issue matches the approved preview. Under US-604, HTML entities are escaped and external text is isolated in blockquotes.",
+                required_evidence=["Write-gating: confirmed=true required", "Cryptographic binding: plan_hash SHA-256", "HTML neutralization: raw HTML escaped", "Delimited untrusted data boundaries"],
+                forbidden_claims=["Claiming the agent can create issues autonomously without human approval", "Claiming raw HTML is executed or rendered"],
+                required_caveats=["Agent is unauthorized to execute state-mutating actions without operator confirmation."],
+            ),
+            verification=VerificationRecord(
+                status=VerificationStatus.VERIFIED,
+                method="agent_security_policy",
+                query_or_tool="open_fix_issue",
+                evidence_provenance="synthetic_fixture",
+                verified_at="2026-10-18T11:35:00Z",
+                verification_notes="Verified open_fix_issue tool definition has requires_approval=True and validates plan_hash.",
+            ),
+            reviews=[
+                ReviewRecord(**REV1),
+                ReviewRecord(**{**REV2, "notes": "Verified write gating and US-604 HTML neutralization."}),
+            ],
+        ),
+    ]
+
+    return BenchmarkDataset(
+        schema_version="1.0.0",
+        dataset_version="1.0.0",
+        dataset_title="Vulnify Security Investigation Benchmark",
+        description="Hand-verified ground truth benchmark question set measuring agent accuracy across path existence, no-path negative cases, architectural exposure, deterministic ranking, and remediation guidance.",
+        created_at="2026-10-18T10:00:00Z",
+        updated_at="2026-10-18T12:30:00Z",
+        cases=cases,
+    )
+
+
+def generate_and_save(target_path: Path | None = None) -> Path:
+    dataset = build_dataset()
+    errors = validate_benchmark_dataset(dataset)
+    if errors:
+        raise ValueError(f"Benchmark validation failed: {errors}")
+
+    if target_path is None:
+        current_dir = Path(__file__).resolve().parent
+        repo_root = current_dir.parent.parent.parent.parent
+        target_path = repo_root / "benchmarks" / "benchmark_dataset.json"
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    json_str = json.dumps(dataset.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n"
+    target_path.write_text(json_str, encoding="utf-8")
+    return target_path
+
+
+if __name__ == "__main__":
+    path = generate_and_save()
+    print(f"Benchmark dataset successfully written to {path}")

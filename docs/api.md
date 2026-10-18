@@ -2281,4 +2281,133 @@ Lists all GitHub issues created for findings in the specified project.
   - `403 Forbidden`: Admin role required.
   - `404 Not Found`: Project not found.
 
+---
 
+## Benchmark Question Set Endpoints (US-801)
+
+### 31. `GET /api/benchmarks/cases`
+- **Description**: List hand-verified benchmark cases with optional category and difficulty filtering.
+- **Authentication**: None (public benchmark access for validation and evaluation harness).
+- **Query Parameters**:
+  - `category` (string, optional): One of `path_exists`, `no_path`, `exposure`, `ranking`, `remediation`.
+  - `difficulty` (string, optional): One of `easy`, `medium`, `hard`.
+- **Response**: `200 OK`
+  ```json
+  {
+    "cases": [
+      {
+        "id": "BM-001",
+        "title": "Direct Dependency Path Verification",
+        "category": "path_exists",
+        "difficulty": "easy",
+        "question": "Does authentication-service have a dependency path to vulnerable jsonwebtoken@8.5.1?",
+        "project_id": "proj-ecommerce-core",
+        "service_name": "authentication-service",
+        "package_name": "jsonwebtoken",
+        "package_version": "8.5.1",
+        "advisory_id": "OSV-EXAMPLE-JWT-001",
+        "expected_answer": {
+          "conclusion": "Yes, a direct dependency path exists from authentication-service to jsonwebtoken@8.5.1 (depth 1).",
+          "explanation": "Graph traversal reveals that authentication-service directly imports jsonwebtoken@8.5.1 as declared in its package manifest. Shortest hop distance is 1.",
+          "required_evidence": [
+            "Direct dependency path",
+            "Depth 1",
+            "Service: authentication-service",
+            "Package: jsonwebtoken@8.5.1"
+          ],
+          "forbidden_claims": [
+            "Claim that path does not exist",
+            "Claim that dependency is transitive (depth > 1)"
+          ],
+          "required_caveats": [
+            "Path represents architectural reachability, not proof of runtime exploitability."
+          ]
+        },
+        "verification": {
+          "status": "verified",
+          "method": "graph_traversal_query",
+          "query_or_tool": "get_project_finding_paths",
+          "evidence_provenance": "service_manifest",
+          "verified_at": "2026-10-18T10:00:00Z",
+          "verification_notes": "Verified with Cypher traversal get_project_finding_paths; single DIRECT edge confirmed."
+        },
+        "reviews": [
+          {
+            "reviewer_id": "reviewer-sec-graph-lead",
+            "role": "Security Graph Architect",
+            "status": "approved",
+            "reviewed_at": "2026-10-18T12:00:00Z",
+            "dataset_version": "1.0.0",
+            "notes": "Verified against FalkorDB Cypher path queries and graph schema conventions."
+          },
+          {
+            "reviewer_id": "reviewer-appsec-lead",
+            "role": "Application Security & Backend Lead",
+            "status": "approved",
+            "reviewed_at": "2026-10-18T12:30:00Z",
+            "dataset_version": "1.0.0",
+            "notes": "Verified direct dependency in package.json manifest."
+          }
+        ]
+      }
+    ],
+    "total": 20,
+    "category_filter": null,
+    "difficulty_filter": null
+  }
+  ```
+- **Status Codes**:
+  - `200 OK`: Successful retrieval.
+
+### 32. `GET /api/benchmarks/cases/{case_id}`
+- **Description**: Retrieve detailed specification, expected answer, and review records for a single benchmark case.
+- **Authentication**: None.
+- **Path Parameters**:
+  - `case_id` (string, required): Benchmark case ID (e.g. `BM-001`).
+- **Response**: `200 OK` (single `BenchmarkCase` object).
+- **Status Codes**:
+  - `200 OK`: Case found.
+  - `404 Not Found`: Case not found.
+
+### 33. `GET /api/benchmarks/summary`
+- **Description**: Retrieve overview metrics of benchmark category coverage, difficulty distributions, and two-person review status.
+- **Authentication**: None.
+- **Response**: `200 OK`
+  ```json
+  {
+    "dataset_version": "1.0.0",
+    "dataset_title": "Vulnify Security Investigation Benchmark",
+    "coverage": {
+      "total_cases": 20,
+      "by_category": {
+        "path_exists": 4,
+        "no_path": 4,
+        "exposure": 4,
+        "ranking": 4,
+        "remediation": 4
+      },
+      "by_difficulty": {
+        "easy": 7,
+        "medium": 8,
+        "hard": 5
+      },
+      "verified_count": 20,
+      "pending_verification_count": 0,
+      "blocked_verification_count": 0
+    },
+    "reviews": {
+      "total_cases": 20,
+      "fully_approved_count": 20,
+      "pending_first_review_count": 0,
+      "pending_second_review_count": 0,
+      "changes_requested_count": 0,
+      "blocked_count": 0,
+      "reviewer_counts": {
+        "reviewer-sec-graph-lead": 20,
+        "reviewer-appsec-lead": 20
+      }
+    }
+  }
+  ```
+- **Status Codes**:
+  - `200 OK`: Successful retrieval.

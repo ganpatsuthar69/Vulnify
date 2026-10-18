@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from vulnify.agent.registry import ToolDefinition
 from vulnify.agent.schemas import TraceFragment
+from vulnify.agent.trust_boundary import delimit_untrusted_data, sanitize_untrusted_text
 from vulnify.graph.vulnerability_repository import get_vulnerability_repository
 
 
@@ -41,6 +42,7 @@ class ExposureExplanation(BaseModel):
     priority_reasons: list[str] = Field(default_factory=list)
     remediation_status: str
     fixed_version: str | None = None
+    delimited_advisory_data: str | None = None
     non_exploitability_disclaimer: str
 
 
@@ -137,6 +139,9 @@ async def handle_explain_finding(inputs: ExplainFindingInput) -> ExplainFindingR
         f"{disclaimer}"
     )
 
+    raw_adv = finding.get("advisory_details") or finding.get("advisory_summary")
+    delimited_adv = delimit_untrusted_data(raw_adv, source="osv_advisory", label=advisory_id) if raw_adv else None
+
     explanation = ExposureExplanation(
         service_name=service_name,
         package_name=package_name,
@@ -150,6 +155,7 @@ async def handle_explain_finding(inputs: ExplainFindingInput) -> ExplainFindingR
         priority_reasons=priority_reasons,
         remediation_status=remediation_status,
         fixed_version=fixed_version,
+        delimited_advisory_data=delimited_adv,
         non_exploitability_disclaimer=disclaimer,
     )
 
