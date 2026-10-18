@@ -183,7 +183,7 @@ RETURN count(DISTINCT s1) AS service_count, count(r) AS call_edge_count
 // name: check_project_advisories_freshness
 // what it proves: evaluates advisory timestamps against the 7-day freshness policy
 // parameters: $project_id
-MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(:Service)-[:DEPENDS_ON*1..15]->(pv:PackageVersion)-[:HAS_ADVISORY]->(v:Vulnerability)
+MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(:Service)-[:DEPENDS_ON|INCLUDES*1..15]->(pv:PackageVersion)-[:HAS_ADVISORY]->(v:Vulnerability)
 RETURN
   count(DISTINCT v) AS total_advisories,
   min(v.retrieved_at) AS oldest_retrieved_at,

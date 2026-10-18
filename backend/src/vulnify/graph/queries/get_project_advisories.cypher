@@ -1,7 +1,7 @@
 // name: get_project_advisories
 // what it proves: fetches distinct advisories associated with package versions in a project
 // parameters: $project_id
-MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(s:Service)-[:DEPENDS_ON*1..15]->(pv:PackageVersion)-[:HAS_ADVISORY]->(v:Vulnerability)
+MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(s:Service)-[:DEPENDS_ON|INCLUDES*1..15]->(pv:PackageVersion)-[:HAS_ADVISORY]->(v:Vulnerability)
 RETURN DISTINCT
   v.id AS id,
   v.summary AS summary,

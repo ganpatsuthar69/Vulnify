@@ -11,6 +11,12 @@ from vulnify.config import Settings, get_settings
 from vulnify.dependencies import get_valid_project, require_admin, require_auth
 from vulnify.graph.advisory_repository import IAdvisoryRepository, get_advisory_repository
 from vulnify.graph.dependency_repository import IDependencyRepository, get_dependency_repository
+from vulnify.graph.explorer_models import ProjectGraphResponse
+from vulnify.graph.explorer_repository import (
+    ExplorerNodeNotFound,
+    FalkorExplorerRepository,
+    get_explorer_repository,
+)
 from vulnify.graph.job_repository import IIngestionJobRepository, get_job_repository
 from vulnify.graph.project_repository import (
     IProjectRepository,
@@ -1772,4 +1778,32 @@ async def retry_project_job(
     )
 
 
+@router.get(
+    "/{project_id}/graph",
+    response_model=ProjectGraphResponse,
+    summary="Explore verified project dependency topology and advisory evidence",
+)
+async def get_project_graph(
+    project_id: str,
+    node_id: str | None = Query(default=None, pattern=r"^(project|service|package|advisory):.+$"),
+    q: str | None = Query(default=None),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=30, ge=1, le=100),
+    project: ProjectRecord = Depends(get_valid_project),
+    repo: FalkorExplorerRepository = Depends(get_explorer_repository),
+) -> ProjectGraphResponse:
+    """Return bounded real graph neighborhoods, never unscoped shared-package paths."""
+    try:
+        return await asyncio.to_thread(
+            repo.get_project_graph, project.id, node_id=node_id, q=q, offset=offset, limit=limit,
+        )
+    except ExplorerNodeNotFound as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Node not found in the verified, bounded project graph. Re-import legacy dependencies if needed.",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="Project graph is temporarily unavailable.",
+        ) from exc
 

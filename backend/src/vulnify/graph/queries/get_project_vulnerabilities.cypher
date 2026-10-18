@@ -1,7 +1,7 @@
 // name: get_project_vulnerabilities
 // what it proves: fetches confirmed affected vulnerabilities with their evaluation reasons for a project
 // parameters: $project_id
-MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(s:Service)-[:DEPENDS_ON*1..15]->(pv:PackageVersion)<-[r:AFFECTS]-(v:Vulnerability)
+MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(s:Service)-[:DEPENDS_ON|INCLUDES*1..15]->(pv:PackageVersion)<-[r:AFFECTS]-(v:Vulnerability)
 RETURN DISTINCT
   v.id AS id,
   v.summary AS summary,

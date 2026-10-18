@@ -704,7 +704,7 @@ Triggers vulnerability advisory ingestion from the official Open Source Vulnerab
   - `X-Requested-With: vulnify`
 
 #### Workflow & Resilience
-1. Retrieves all `PackageVersion` nodes connected to the project via `(Project)-[:HAS_SERVICE]->(Service)-[:DEPENDS_ON*1..15]->(PackageVersion)`.
+1. Retrieves all `PackageVersion` nodes connected to the project via `(Project)-[:HAS_SERVICE]->(Service)-[:DEPENDS_ON|INCLUDES*1..15]->(PackageVersion)`. `INCLUDES` is the import inventory edge, so packages the lockfile does not attach to a parent (for example `// indirect` modules in `go.mod`) are still scanned; only `DEPENDS_ON` is used as exposure-path evidence.
 2. Deduplicates packages by `(ecosystem, name, version)`.
 3. Checks local in-memory TTL cache (`OSV_CACHE_TTL_SECONDS`). Confirmed no-match results are cached to prevent redundant lookups.
 4. Executes batched queries against `POST /v1/querybatch` (batch size controlled by `OSV_BATCH_SIZE`).

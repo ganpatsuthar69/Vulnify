@@ -1,0 +1,179 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "run-20261018_152848",
+  "dataset_version": "1.0.0",
+  "corpus_id": "corpus-ecommerce-v1",
+  "started_at": "2026-10-18T15:28:48.412566+00:00",
+  "completed_at": "2026-10-18T15:28:48.415354+00:00",
+  "protocol": {
+    "protocol_version": "1.0.0",
+    "graph_system_name": "vulnify-graph-agent",
+    "rag_system_name": "text-rag-baseline",
+    "shared_model": "codestral-latest",
+    "shared_provider": "mistral",
+    "temperature": 0.0,
+    "max_tokens": 1000,
+    "retrieval_strategy": "bm25_text_chunks",
+    "top_k_chunks": 5
+  },
+  "summary": {
+    "total_cases": 4,
+    "graph_success_count": 4,
+    "rag_success_count": 4,
+    "graph_error_count": 0,
+    "rag_error_count": 0,
+    "graph_avg_duration_ms": 1.0,
+    "rag_avg_duration_ms": 1.0,
+    "by_category": {
+      "path_exists": {
+        "total_cases": 4,
+        "graph_success_count": 4,
+        "rag_success_count": 4,
+        "graph_avg_duration_ms": 1.0,
+        "rag_avg_duration_ms": 1.0
+      }
+    }
+  },
+  "cases": [
+    {
+      "case_id": "BM-001",
+      "category": "path_exists",
+      "difficulty": "easy",
+      "question": "Does authentication-service have a dependency path to vulnerable jsonwebtoken@8.5.1?",
+      "expected_conclusion": "Yes, a direct dependency path exists from authentication-service to jsonwebtoken@8.5.1 (depth 1).",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-002",
+      "category": "path_exists",
+      "difficulty": "easy",
+      "question": "What is the shortest reachability path from order-service to find-my-way@3.0.0?",
+      "expected_conclusion": "The shortest path is transitive with depth 2: order-service -> fastify@3.29.0 -> find-my-way@3.0.0.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-003",
+      "category": "path_exists",
+      "difficulty": "medium",
+      "question": "How many hops separate checkout-service from vulnerable lodash@4.17.15, and what intermediate packages are traversed?",
+      "expected_conclusion": "Exactly 3 hops separate checkout-service from lodash@4.17.15 via auth-client@1.2.0 and token-verifier@2.1.0.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-004",
+      "category": "path_exists",
+      "difficulty": "hard",
+      "question": "Does web-frontend reach vulnerable redis-parser@3.0.0 across service boundaries?",
+      "expected_conclusion": "Yes, web-frontend reaches redis-parser@3.0.0 across service boundaries via cart-service (web-frontend -[CALLS]-> cart-service -[DEPENDS_ON]-> redis-parser@3.0.0).",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    }
+  ]
+}

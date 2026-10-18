@@ -42,6 +42,7 @@ class FalkorDependencyRepository:
         self._query_upsert_packages = load_query("batch_upsert_package_versions.cypher")
         self._query_create_service_deps = load_query("batch_create_service_dependencies.cypher")
         self._query_create_package_deps = load_query("batch_create_package_dependencies.cypher")
+        self._query_link_inventory = load_query("batch_link_service_inventory.cypher")
         self._query_record_import = load_query("record_import_event.cypher")
         self._query_get_by_hash = load_query("get_import_by_hash.cypher")
         self._query_count_packages = load_query("count_existing_package_versions.cypher")
@@ -117,7 +118,7 @@ class FalkorDependencyRepository:
                     existing_service_deps_count += int(res.result_set[0][0])
 
         edge_params = [
-            {"source_id": e.source_id, "target_id": e.target_id}
+            {"source_id": e.source_id, "target_id": e.target_id, "service_id": service_id}
             for e in parsed_graph.edges
         ]
         existing_package_deps_count = 0
@@ -156,6 +157,13 @@ class FalkorDependencyRepository:
         if edge_params:
             for chunk in _chunk_list(edge_params, BATCH_CHUNK_SIZE):
                 graph.query(self._query_create_package_deps, {"edges": chunk})
+
+        # Without this, packages that have no DEPENDS_ON path (e.g. Go indirect modules) are never scanned.
+        for chunk in _chunk_list(package_ids, BATCH_CHUNK_SIZE):
+            graph.query(
+                self._query_link_inventory,
+                {"service_id": service_id, "package_ids": chunk},
+            )
 
         # 6. Record Import Provenance Event
         import_id = str(uuid.uuid4())
@@ -213,6 +221,7 @@ class InMemoryDependencyRepository:
         self._packages: dict[str, dict[str, Any]] = {}
         self._service_deps: set[tuple[str, str]] = set()
         self._package_deps: set[tuple[str, str]] = set()
+        self._package_dep_service_ids: dict[tuple[str, str], set[str]] = {}
         self._imports: list[dict[str, Any]] = []
 
     def get_import_by_hash(
@@ -276,9 +285,11 @@ class InMemoryDependencyRepository:
         for target_id in parsed_graph.direct_dependency_ids:
             self._service_deps.add((service_id, target_id))
 
-        # Upsert package edges
+        # Keep the existing edge set shape; track imported service evidence separately.
         for edge in parsed_graph.edges:
-            self._package_deps.add((edge.source_id, edge.target_id))
+            key = (edge.source_id, edge.target_id)
+            self._package_deps.add(key)
+            self._package_dep_service_ids.setdefault(key, set()).add(service_id)
 
         # Record provenance
         imp = {
@@ -323,6 +334,7 @@ class InMemoryDependencyRepository:
         self._packages.clear()
         self._service_deps.clear()
         self._package_deps.clear()
+        self._package_dep_service_ids.clear()
         self._imports.clear()
 
 

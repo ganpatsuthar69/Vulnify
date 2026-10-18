@@ -1,6 +1,7 @@
 """Evaluator interpreting OSV affected ranges against package versions using ecosystem comparators."""
 
 from datetime import datetime, timezone
+import re
 import time
 from vulnify.version_matching.comparators.base import (
     BaseVersionComparator,
@@ -19,6 +20,14 @@ from vulnify.version_matching.models import (
     OSVRange,
     VersionMatchResult,
 )
+
+
+def _name_key(name: str, ecosystem: str) -> str:
+    """Compare key for a package name; PEP 503 makes '-', '_' and '.' equivalent for PyPI."""
+    normalized = name.strip().lower()
+    if ecosystem.strip().lower() in ("pypi", "python"):
+        return re.sub(r"[-_.]+", "-", normalized)
+    return normalized
 
 
 def evaluate_version_against_advisory(
@@ -88,9 +97,10 @@ def evaluate_version_against_advisory(
         return res.with_fingerprint()
 
     # 4. Locate relevant affected package entries in the advisory
+    package_key = _name_key(clean_pkg_name, clean_ecosystem)
     matching_affected: list[OSVAffectedPackage] = [
         aff for aff in advisory.affected
-        if aff.package_name.strip().lower() == clean_pkg_name.lower()
+        if _name_key(aff.package_name, clean_ecosystem) == package_key
         and aff.ecosystem.strip().lower() == clean_ecosystem.lower()
     ]
 

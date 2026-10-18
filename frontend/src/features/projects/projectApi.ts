@@ -46,6 +46,33 @@ import type {
 import { ApiClientError, isMockMode, parseApiError } from '@/shared/api/client'
 import type { ApiClientErrorOptions } from '@/shared/types/api'
 import { notifyUnauthorized } from '@/features/auth/authApi'
+import type { ExplorerGraph, GraphRequest } from '@/features/graph/types'
+
+export async function getProjectGraph(
+  projectId: string,
+  params: GraphRequest = {},
+  signal?: AbortSignal,
+): Promise<ExplorerGraph> {
+  if (isMockMode()) {
+    throw new ProjectApiError('The relationship explorer requires a live backend; sample edges are not generated.')
+  }
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') query.set(key, String(value))
+  }
+  let response: Response
+  try {
+    response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/graph?${query}`, {
+      credentials: 'include', signal,
+    })
+  } catch (error) {
+    if (signal?.aborted) throw error
+    throw new ProjectApiError('Cannot reach the graph server.', { isNetworkError: true })
+  }
+  if (response.ok) return await response.json() as ExplorerGraph
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to load graph relationships.', { status: response.status })
+}
 
 export class ProjectApiError extends ApiClientError {
   constructor(

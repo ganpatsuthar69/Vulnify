@@ -32,6 +32,11 @@ def _decode_content(content: str | bytes) -> str:
     return content
 
 
+def _canonical_pypi_name(name: str) -> str:
+    """Normalize a project name per PEP 503; OSV serves PyPI records under the normalized name."""
+    return re.sub(r"[-_.]+", "-", name.strip()).lower()
+
+
 def parse_poetry_lock(content: str | bytes, filename: str = "poetry.lock") -> ParsedGraph:
     """Parse a Poetry poetry.lock file deterministically via standard tomllib."""
     content_str = _decode_content(content)
@@ -80,7 +85,7 @@ def parse_poetry_lock(content: str | bytes, filename: str = "poetry.lock") -> Pa
             continue
 
         pkg_name = raw_name.strip()
-        canonical_name = pkg_name.lower().replace("_", "-")
+        canonical_name = _canonical_pypi_name(pkg_name)
         version = raw_version.strip()
         pv_id = f"pypi:{canonical_name}@{version}"
         purl = f"pkg:pypi/{canonical_name}@{version}"
@@ -116,7 +121,7 @@ def parse_poetry_lock(content: str | bytes, filename: str = "poetry.lock") -> Pa
         for req_raw_name in deps_dict.keys():
             if not isinstance(req_raw_name, str):
                 continue
-            req_canonical = req_raw_name.strip().lower().replace("_", "-")
+            req_canonical = _canonical_pypi_name(req_raw_name)
             if req_canonical in packages_by_name:
                 dst_id = packages_by_name[req_canonical][0]
                 if src_id != dst_id:
@@ -194,7 +199,7 @@ def parse_uv_lock(content: str | bytes, filename: str = "uv.lock") -> ParsedGrap
             warnings.append("Skipping package entry: missing or empty package name.")
             continue
 
-        canonical_name = raw_name.strip().lower().replace("_", "-")
+        canonical_name = _canonical_pypi_name(raw_name)
         source = pkg.get("source") or {}
 
         # Detect workspace root / virtual root package
@@ -208,12 +213,12 @@ def parse_uv_lock(content: str | bytes, filename: str = "uv.lock") -> ParsedGrap
         if isinstance(raw_deps, list):
             for d in raw_deps:
                 if isinstance(d, dict) and "name" in d:
-                    deps_list.append(str(d["name"]).strip().lower().replace("_", "-"))
+                    deps_list.append(_canonical_pypi_name(str(d["name"])))
                 elif isinstance(d, str):
                     # string may be "pkg==1.0" or "pkg"
                     dep_name_match = re.match(r"^([a-zA-Z0-9_\-\.]+)", d.strip())
                     if dep_name_match:
-                        deps_list.append(dep_name_match.group(1).lower().replace("_", "-"))
+                        deps_list.append(_canonical_pypi_name(dep_name_match.group(1)))
 
         if is_virtual_root:
             workspace_direct_dep_names.update(deps_list)
@@ -333,7 +338,7 @@ def parse_pylock_toml(content: str | bytes, filename: str = "pylock.toml") -> Pa
             warnings.append(f"Skipping package '{raw_name}': missing resolved version.")
             continue
 
-        canonical_name = raw_name.strip().lower().replace("_", "-")
+        canonical_name = _canonical_pypi_name(raw_name)
         version = raw_version.strip()
         pv_id = f"pypi:{canonical_name}@{version}"
         purl = f"pkg:pypi/{canonical_name}@{version}"
@@ -352,11 +357,11 @@ def parse_pylock_toml(content: str | bytes, filename: str = "pylock.toml") -> Pa
         if isinstance(raw_deps, list):
             for d in raw_deps:
                 if isinstance(d, dict) and "name" in d:
-                    deps_list.append(str(d["name"]).strip().lower().replace("_", "-"))
+                    deps_list.append(_canonical_pypi_name(str(d["name"])))
                 elif isinstance(d, str):
                     m = re.match(r"^([a-zA-Z0-9_\-\.]+)", d.strip())
                     if m:
-                        deps_list.append(m.group(1).lower().replace("_", "-"))
+                        deps_list.append(_canonical_pypi_name(m.group(1)))
 
         packages_by_name[canonical_name] = (pv_id, deps_list)
 
@@ -411,10 +416,25 @@ def parse_requirements_txt(content: str | bytes, filename: str = "requirements.t
 
     lines = content_str.splitlines()
 
+    # PEP 508 continuation lines carry no requirement of their own; they belong to the entry above.
+    expected_continuations: set[int] = set()
+
     for line_num, raw_line in enumerate(lines, start=1):
+        if line_num in expected_continuations:
+            expected_continuations.discard(line_num)
+            continue
+
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
+
+        if line.endswith("\\"):
+            line = line[:-1].strip()
+            expected_continuations.add(line_num + 1)
+
+        # Drop trailing comments and inline options such as "--hash=sha256:..."
+        line = re.split(r"\s+#", line, maxsplit=1)[0].strip()
+        line = re.split(r"\s+--", line, maxsplit=1)[0].strip()
 
         # Skip CLI flags and includes (-r, -i, -f, -c, --extra-index-url, etc.)
         if line.startswith("-"):
@@ -427,12 +447,24 @@ def parse_requirements_txt(content: str | bytes, filename: str = "requirements.t
         spec = parts[0].strip()
         marker = parts[1].strip() if len(parts) > 1 else None
 
-        # Look for strictly pinned entry: package==version
-        match = re.match(r"^([a-zA-Z0-9_\-\.]+)\s*==\s*([a-zA-Z0-9_\-\.\+]+)", spec)
+        # Look for strictly pinned entry, with optional PEP 508 extras: uvicorn[standard]==0.30.0
+        match = re.match(
+            r"^([a-zA-Z0-9][a-zA-Z0-9._-]*)\s*(?:\[[^\]]*\])?\s*==\s*(\S+)",
+            spec,
+        )
+        version = match.group(2).strip() if match else None
+        if version and not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._\+]*", version):
+            skipped_entries += 1
+            label = "wildcard" if "*" in version else "non-exact"
+            warnings.append(
+                f"Line {line_num}: skipping {label} pinned requirement '{spec}'. "
+                "Only an exact resolved version (name==1.2.3) can be verified against OSV."
+            )
+            continue
+
         if match:
             raw_name = match.group(1).strip()
-            version = match.group(2).strip()
-            canonical_name = raw_name.lower().replace("_", "-")
+            canonical_name = _canonical_pypi_name(raw_name)
             pv_id = f"pypi:{canonical_name}@{version}"
             purl = f"pkg:pypi/{canonical_name}@{version}"
 
