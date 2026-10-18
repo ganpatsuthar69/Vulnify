@@ -11,17 +11,20 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from vulnify.security import decrypt_secret
+
 
 class LLMConfig(BaseModel):
     """Configuration for language model invocation."""
 
     model_config = ConfigDict(extra="forbid")
 
-    provider: str = Field(default="auto", description="Provider identifier (auto, openai, gemini, deterministic_test).")
-    model: str = Field(default="gpt-4o-mini", description="Model identifier.")
+    provider: str = Field(default="mistral", description="Provider identifier (mistral, auto, openai, gemini, deterministic_test).")
+    model: str = Field(default="mistral-small-latest", description="Model identifier.")
+    base_url: str | None = Field(default=None, description="Optional custom base URL for the LLM provider.")
     temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Sampling temperature.")
     max_tokens: int = Field(default=1000, ge=50, le=4096, description="Maximum token generation limit.")
-    api_key: str | None = Field(default=None, description="Optional provider API key override.")
+    api_key: str | None = Field(default=None, description="Optional provider API key override (plaintext or enc:v1: ciphertext).")
     timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0, description="Per-request timeout.")
 
 
@@ -52,12 +55,46 @@ class BaseLLMClient:
         self.config = config or LLMConfig()
         self._effective_provider = self._resolve_provider()
 
+    def _get_api_key(self, provider: str) -> str | None:
+        """Resolve API key for a provider from config, Settings (.env), or os.environ."""
+        if self.config.api_key:
+            return self.config.api_key
+
+        try:
+            from vulnify.config import get_settings
+            settings = get_settings()
+        except Exception:
+            settings = None
+
+        if provider == "mistral":
+            return (
+                (settings.MISTRAL_API_KEY if settings else None)
+                or os.getenv("MISTRAL_API_KEY")
+                or (settings.AGENT_LLM_API_KEY if settings else None)
+                or os.getenv("AGENT_LLM_API_KEY")
+            )
+        elif provider == "openai":
+            return (
+                (settings.OPENAI_API_KEY if settings else None)
+                or os.getenv("OPENAI_API_KEY")
+                or (settings.AGENT_LLM_API_KEY if settings else None)
+                or os.getenv("AGENT_LLM_API_KEY")
+            )
+        elif provider == "gemini":
+            return (
+                (settings.GEMINI_API_KEY if settings else None)
+                or os.getenv("GEMINI_API_KEY")
+            )
+        return None
+
     def _resolve_provider(self) -> str:
         provider = self.config.provider.lower().strip()
         if provider == "auto":
-            if self.config.api_key or os.getenv("OPENAI_API_KEY") or os.getenv("AGENT_LLM_API_KEY"):
+            if self._get_api_key("mistral"):
+                return "mistral"
+            if self._get_api_key("openai"):
                 return "openai"
-            if os.getenv("GEMINI_API_KEY"):
+            if self._get_api_key("gemini"):
                 return "gemini"
             return "deterministic_test"
         return provider
@@ -70,11 +107,16 @@ class BaseLLMClient:
         """Execute chat completion using the configured provider."""
         start = time.perf_counter()
 
-        if self._effective_provider == "openai":
-            result = await self._call_openai(messages)
-        elif self._effective_provider == "gemini":
-            result = await self._call_gemini(messages)
-        else:
+        try:
+            if self._effective_provider == "mistral":
+                result = await self._call_mistral(messages)
+            elif self._effective_provider == "openai":
+                result = await self._call_openai(messages)
+            elif self._effective_provider == "gemini":
+                result = await self._call_gemini(messages)
+            else:
+                result = self._call_deterministic(messages)
+        except Exception:
             result = self._call_deterministic(messages)
 
         elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
@@ -87,15 +129,52 @@ class BaseLLMClient:
             duration_ms=elapsed_ms,
         )
 
-    async def _call_openai(self, messages: list[LLMMessage]) -> dict[str, Any]:
-        """Execute OpenAI compatible chat completion API call."""
-        api_key = self.config.api_key or os.getenv("OPENAI_API_KEY") or os.getenv("AGENT_LLM_API_KEY")
+    async def _call_mistral(self, messages: list[LLMMessage]) -> dict[str, Any]:
+        """Execute Mistral AI chat completion API call."""
+        raw_key = self._get_api_key("mistral")
+        api_key = decrypt_secret(raw_key) if raw_key else None
         if not api_key:
             return self._call_deterministic(messages)
 
-        url = "https://api.openai.com/v1/chat/completions"
+        base_url = (self.config.base_url or os.getenv("MISTRAL_API_BASE_URL") or "https://api.mistral.ai/v1").rstrip("/")
+        url = f"{base_url}/chat/completions"
+        model = self.config.model or os.getenv("AGENT_LLM_MODEL") or "mistral-small-latest"
+
         payload = {
-            "model": self.config.model,
+            "model": model,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "temperature": self.config.temperature,
+            "max_tokens": self.config.max_tokens,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            choice = data["choices"][0]["message"]["content"]
+            usage = data.get("usage", {})
+            return {
+                "content": choice,
+                "prompt_tokens": usage.get("prompt_tokens"),
+                "completion_tokens": usage.get("completion_tokens"),
+            }
+
+    async def _call_openai(self, messages: list[LLMMessage]) -> dict[str, Any]:
+        """Execute OpenAI compatible chat completion API call."""
+        raw_key = self._get_api_key("openai")
+        api_key = decrypt_secret(raw_key) if raw_key else None
+        if not api_key:
+            return self._call_deterministic(messages)
+
+        base_url = (self.config.base_url or os.getenv("OPENAI_API_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
+        url = f"{base_url}/chat/completions"
+        payload = {
+            "model": self.config.model or os.getenv("AGENT_LLM_MODEL") or "gpt-4o-mini",
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "temperature": self.config.temperature,
             "max_tokens": self.config.max_tokens,
@@ -119,7 +198,8 @@ class BaseLLMClient:
 
     async def _call_gemini(self, messages: list[LLMMessage]) -> dict[str, Any]:
         """Execute Google Gemini API call."""
-        api_key = self.config.api_key or os.getenv("GEMINI_API_KEY")
+        raw_key = self.config.api_key or os.getenv("GEMINI_API_KEY")
+        api_key = decrypt_secret(raw_key) if raw_key else None
         if not api_key:
             return self._call_deterministic(messages)
 

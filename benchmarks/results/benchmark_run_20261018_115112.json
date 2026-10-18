@@ -1,0 +1,339 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "run-20261018_115112",
+  "dataset_version": "1.0.0",
+  "corpus_id": "corpus-ecommerce-v1",
+  "started_at": "2026-10-18T11:51:12.396819+00:00",
+  "completed_at": "2026-10-18T11:51:12.407560+00:00",
+  "protocol": {
+    "protocol_version": "1.0.0",
+    "graph_system_name": "vulnify-graph-agent",
+    "rag_system_name": "text-rag-baseline",
+    "shared_model": "mistral-small-latest",
+    "shared_provider": "mistral",
+    "temperature": 0.0,
+    "max_tokens": 1000,
+    "retrieval_strategy": "bm25_text_chunks",
+    "top_k_chunks": 5
+  },
+  "summary": {
+    "total_cases": 4,
+    "graph_success_count": 4,
+    "rag_success_count": 4,
+    "graph_error_count": 0,
+    "rag_error_count": 0,
+    "graph_avg_duration_ms": 0.35,
+    "rag_avg_duration_ms": 0.89,
+    "by_category": {
+      "path_exists": {
+        "total_cases": 4,
+        "graph_success_count": 4,
+        "rag_success_count": 4,
+        "graph_avg_duration_ms": 0.35,
+        "rag_avg_duration_ms": 0.89
+      }
+    }
+  },
+  "cases": [
+    {
+      "case_id": "BM-001",
+      "category": "path_exists",
+      "difficulty": "easy",
+      "question": "Does authentication-service have a dependency path to vulnerable jsonwebtoken@8.5.1?",
+      "expected_conclusion": "Yes, a direct dependency path exists from authentication-service to jsonwebtoken@8.5.1 (depth 1).",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "Yes, a direct dependency path exists from authentication-service to jsonwebtoken@8.5.1 (depth 1). authentication-service directly imports jsonwebtoken@8.5.1 in its manifest. Notice: Architectural reachability demonstrates structural exposure, not proof of runtime exploitability.",
+        "evidence_references": [
+          "cypher:get_project_finding_paths",
+          "cypher:rank_project_findings",
+          "find-59107925c9d1",
+          "Service: authentication-service \u2192 jsonwebtoken@8.5.1"
+        ],
+        "retrieval_metadata": {
+          "retrieval_strategy": "graph_traversal_tools",
+          "path_count": 1,
+          "shortest_depth": 1,
+          "target_finding_id": "find-59107925c9d1",
+          "priority_band": "Highest"
+        },
+        "duration_ms": 0.94,
+        "tokens_used": 172,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "The retrieved context notes that devDependencies are pruned from production builds. However, runtime reachability status remains unverified without graph analysis.",
+        "evidence_references": [
+          "DOC-SVC-AUTH",
+          "DOC-ADV-JWT-001",
+          "DOC-POLICY-SCORING",
+          "DOC-ADV-PATCH-001",
+          "DOC-SVC-API-DEVDEPS"
+        ],
+        "retrieval_metadata": {
+          "retrieval_strategy": "bm25_text_chunks",
+          "top_k": 5,
+          "retrieved_count": 5,
+          "retrieved_chunks": [
+            {
+              "doc_id": "DOC-SVC-AUTH",
+              "score": 12.6479,
+              "category": "manifest"
+            },
+            {
+              "doc_id": "DOC-ADV-JWT-001",
+              "score": 12.6098,
+              "category": "advisory"
+            },
+            {
+              "doc_id": "DOC-POLICY-SCORING",
+              "score": 5.2969,
+              "category": "policy"
+            },
+            {
+              "doc_id": "DOC-ADV-PATCH-001",
+              "score": 4.1613,
+              "category": "advisory"
+            },
+            {
+              "doc_id": "DOC-SVC-API-DEVDEPS",
+              "score": 4.1447,
+              "category": "manifest"
+            }
+          ]
+        },
+        "duration_ms": 2.46,
+        "tokens_used": 521,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-002",
+      "category": "path_exists",
+      "difficulty": "easy",
+      "question": "What is the shortest reachability path from order-service to find-my-way@3.0.0?",
+      "expected_conclusion": "The shortest path is transitive with depth 2: order-service -> fastify@3.29.0 -> find-my-way@3.0.0.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "The shortest reachability path is transitive with depth 2: order-service -> fastify@3.29.0 -> find-my-way@3.0.0. order-service connects to find-my-way@3.0.0 through intermediate dependencies. Notice: Reachability demonstrates architectural exposure through package dependency chains.",
+        "evidence_references": [
+          "cypher:get_project_finding_paths",
+          "cypher:rank_project_findings",
+          "find-b6e148f0ceb5",
+          "order-service -> fastify@3.29.0 -> find-my-way@3.0.0"
+        ],
+        "retrieval_metadata": {
+          "retrieval_strategy": "graph_traversal_tools",
+          "path_count": 1,
+          "shortest_depth": 2,
+          "target_finding_id": "find-b6e148f0ceb5",
+          "priority_band": "High"
+        },
+        "duration_ms": 0.13,
+        "tokens_used": 179,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "The retrieved context shows order-service imports fastify@3.29.0, but What is not directly declared. Without graph traversal, transitive hop distance and complete chain cannot be confirmed.",
+        "evidence_references": [
+          "DOC-SVC-ORDER",
+          "DOC-ADV-FMW-001",
+          "DOC-POLICY-SCORING",
+          "DOC-ADV-NOFIX-001",
+          "DOC-ADV-PATCH-001"
+        ],
+        "retrieval_metadata": {
+          "retrieval_strategy": "bm25_text_chunks",
+          "top_k": 5,
+          "retrieved_count": 5,
+          "retrieved_chunks": [
+            {
+              "doc_id": "DOC-SVC-ORDER",
+              "score": 14.0985,
+              "category": "lockfile"
+            },
+            {
+              "doc_id": "DOC-ADV-FMW-001",
+              "score": 12.9645,
+              "category": "advisory"
+            },
+            {
+              "doc_id": "DOC-POLICY-SCORING",
+              "score": 6.5685,
+              "category": "policy"
+            },
+            {
+              "doc_id": "DOC-ADV-NOFIX-001",
+              "score": 5.2781,
+              "category": "advisory"
+            },
+            {
+              "doc_id": "DOC-ADV-PATCH-001",
+              "score": 4.1613,
+              "category": "advisory"
+            }
+          ]
+        },
+        "duration_ms": 0.4,
+        "tokens_used": 503,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-003",
+      "category": "path_exists",
+      "difficulty": "medium",
+      "question": "How many hops separate checkout-service from vulnerable lodash@4.17.15, and what intermediate packages are traversed?",
+      "expected_conclusion": "Exactly 3 hops separate checkout-service from lodash@4.17.15 via auth-client@1.2.0 and token-verifier@2.1.0.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "Exactly 3 hops separate checkout-service from lodash@4.17.15: checkout-service -> auth-client@1.2.0 -> token-verifier@2.1.0 -> lodash@4.17.15. Notice: Bounded search depth 8 confirmed no shorter path exists.",
+        "evidence_references": [
+          "cypher:get_project_finding_paths",
+          "cypher:rank_project_findings",
+          "find-6004d9f0a30f",
+          "checkout-service -> auth-client@1.2.0 -> token-verifier@2.1.0 -> lodash@4.17.15"
+        ],
+        "retrieval_metadata": {
+          "retrieval_strategy": "graph_traversal_tools",
+          "path_count": 1,
+          "shortest_depth": 3,
+          "target_finding_id": "find-6004d9f0a30f",
+          "priority_band": "High"
+        },
+        "duration_ms": 0.12,
+        "tokens_used": 180,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "The retrieved context notes that devDependencies are pruned from production builds. However, runtime reachability status remains unverified without graph analysis.",
+        "evidence_references": [
+          "DOC-SVC-CHECKOUT",
+          "DOC-ADV-LODASH-001",
+          "DOC-SVC-API-DEVDEPS",
+          "DOC-ADV-JWT-001",
+          "DOC-SVC-GATEWAY"
+        ],
+        "retrieval_metadata": {
+          "retrieval_strategy": "bm25_text_chunks",
+          "top_k": 5,
+          "retrieved_count": 5,
+          "retrieved_chunks": [
+            {
+              "doc_id": "DOC-SVC-CHECKOUT",
+              "score": 13.5288,
+              "category": "lockfile"
+            },
+            {
+              "doc_id": "DOC-ADV-LODASH-001",
+              "score": 9.9182,
+              "category": "advisory"
+            },
+            {
+              "doc_id": "DOC-SVC-API-DEVDEPS",
+              "score": 5.9999,
+              "category": "manifest"
+            },
+            {
+              "doc_id": "DOC-ADV-JWT-001",
+              "score": 4.0012,
+              "category": "advisory"
+            },
+            {
+              "doc_id": "DOC-SVC-GATEWAY",
+              "score": 3.4255,
+              "category": "topology"
+            }
+          ]
+        },
+        "duration_ms": 0.37,
+        "tokens_used": 410,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-004",
+      "category": "path_exists",
+      "difficulty": "hard",
+      "question": "Does web-frontend reach vulnerable redis-parser@3.0.0 across service boundaries?",
+      "expected_conclusion": "Yes, web-frontend reaches redis-parser@3.0.0 across service boundaries via cart-service (web-frontend -[CALLS]-> cart-service -[DEPENDS_ON]-> redis-parser@3.0.0).",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "Yes, a direct dependency path exists from authentication-service to jsonwebtoken@8.5.1 (depth 1). authentication-service directly imports jsonwebtoken@8.5.1 in its manifest. Notice: Architectural reachability demonstrates structural exposure, not proof of runtime exploitability.",
+        "evidence_references": [
+          "cypher:get_project_finding_paths",
+          "cypher:rank_project_findings",
+          "find-59107925c9d1",
+          "Service: authentication-service \u2192 jsonwebtoken@8.5.1"
+        ],
+        "retrieval_metadata": {
+          "retrieval_strategy": "graph_traversal_tools",
+          "path_count": 1,
+          "shortest_depth": 1,
+          "target_finding_id": "find-59107925c9d1",
+          "priority_band": "Highest"
+        },
+        "duration_ms": 0.21,
+        "tokens_used": 171,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "Retrieved documents show web-frontend and cart-service, but text retrieval cannot establish heterogeneous reachability combining synthetic RPC calls and package dependencies.",
+        "evidence_references": [
+          "DOC-SVC-WEB-FRONTEND",
+          "DOC-ADV-REDIS-001",
+          "DOC-ADV-PATCH-001",
+          "DOC-SVC-CART",
+          "DOC-ADV-AXIOS-001"
+        ],
+        "retrieval_metadata": {
+          "retrieval_strategy": "bm25_text_chunks",
+          "top_k": 5,
+          "retrieved_count": 5,
+          "retrieved_chunks": [
+            {
+              "doc_id": "DOC-SVC-WEB-FRONTEND",
+              "score": 12.368,
+              "category": "manifest"
+            },
+            {
+              "doc_id": "DOC-ADV-REDIS-001",
+              "score": 9.3292,
+              "category": "advisory"
+            },
+            {
+              "doc_id": "DOC-ADV-PATCH-001",
+              "score": 4.275,
+              "category": "advisory"
+            },
+            {
+              "doc_id": "DOC-SVC-CART",
+              "score": 3.1066,
+              "category": "manifest"
+            },
+            {
+              "doc_id": "DOC-ADV-AXIOS-001",
+              "score": 2.8538,
+              "category": "advisory"
+            }
+          ]
+        },
+        "duration_ms": 0.33,
+        "tokens_used": 354,
+        "error_message": null
+      }
+    }
+  ]
+}

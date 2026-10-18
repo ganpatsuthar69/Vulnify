@@ -49,20 +49,14 @@ class EvidenceCorpus(BaseModel):
 
 def get_default_corpus_path() -> Path:
     """Resolve default path to benchmarks/evidence_corpus.json."""
-    candidates = [
-        Path("benchmarks/evidence_corpus.json"),
-        Path("../benchmarks/evidence_corpus.json"),
-        Path("../../benchmarks/evidence_corpus.json"),
-    ]
-    for c in candidates:
-        if c.exists():
-            return c.resolve()
-    return candidates[0]
+    from vulnify.benchmarks.loader import resolve_benchmark_path
+    return resolve_benchmark_path(None, "evidence_corpus.json")
 
 
 def save_evidence_corpus(corpus: EvidenceCorpus, output_path: Path | str) -> Path:
     """Save an evidence corpus instance to JSON."""
-    path = Path(output_path)
+    from vulnify.benchmarks.loader import resolve_benchmark_path
+    path = resolve_benchmark_path(output_path, "evidence_corpus.json")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         json.dump(corpus.model_dump(), f, indent=2)
@@ -71,7 +65,8 @@ def save_evidence_corpus(corpus: EvidenceCorpus, output_path: Path | str) -> Pat
 
 def load_evidence_corpus(corpus_path: Path | str | None = None) -> EvidenceCorpus:
     """Load the shared benchmark evidence corpus from JSON disk file."""
-    target = Path(corpus_path) if corpus_path else get_default_corpus_path()
+    from vulnify.benchmarks.loader import resolve_benchmark_path
+    target = resolve_benchmark_path(corpus_path, "evidence_corpus.json")
 
     if not target.exists():
         raise FileNotFoundError(

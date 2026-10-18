@@ -255,14 +255,37 @@ export async function fetchBenchmarkRunByFilename(filename: string): Promise<Ben
 
   return (await resp.json()) as BenchmarkRunResult
 }
+export interface TriggerBenchmarkParams {
+  category?: string | null
+  dry_run?: boolean
+  llm_provider?: string
+  llm_model?: string
+  temperature?: number
+}
 
 /**
  * Trigger a new benchmark comparison run.
+ * If llm_provider or llm_model are omitted, the backend dynamically resolves
+ * them from its configured environment / database settings without hardcoded defaults.
  */
-export async function triggerBenchmarkRun(params?: {
-  category?: string
-  dry_run?: boolean
-}): Promise<BenchmarkRunResult> {
+export async function triggerBenchmarkRun(
+  params?: TriggerBenchmarkParams,
+): Promise<BenchmarkRunResult> {
+  const payload: Record<string, unknown> = {
+    category: params?.category ?? null,
+    dry_run: params?.dry_run ?? false,
+  }
+
+  if (params?.llm_provider) {
+    payload.llm_provider = params.llm_provider
+  }
+  if (params?.llm_model) {
+    payload.llm_model = params.llm_model
+  }
+  if (params?.temperature !== undefined) {
+    payload.temperature = params.temperature
+  }
+
   const resp = await fetch('/api/benchmarks/run', {
     method: 'POST',
     headers: {
@@ -270,13 +293,7 @@ export async function triggerBenchmarkRun(params?: {
       Accept: 'application/json',
       'X-Requested-With': 'vulnify',
     },
-    body: JSON.stringify({
-      category: params?.category ?? null,
-      dry_run: params?.dry_run ?? false,
-      llm_provider: 'auto',
-      llm_model: 'gpt-4o-mini',
-      temperature: 0.0,
-    }),
+    body: JSON.stringify(payload),
   })
 
   if (!resp.ok) {

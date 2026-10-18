@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "backend/.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -53,9 +53,11 @@ class Settings(BaseSettings):
     # Agent Investigation Configuration (US-602)
     AGENT_STEP_LIMIT: int = 10
     AGENT_RUN_TIMEOUT_SECONDS: int = 60
-    AGENT_LLM_PROVIDER: str = "auto"
-    AGENT_LLM_MODEL: str = "gpt-4o-mini"
+    AGENT_LLM_PROVIDER: str = "mistral"
+    AGENT_LLM_MODEL: str = "mistral-small-latest"
     AGENT_LLM_API_KEY: str | None = None
+    MISTRAL_API_KEY: str | None = None
+    MISTRAL_API_BASE_URL: str = "https://api.mistral.ai/v1"
     OPENAI_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
 

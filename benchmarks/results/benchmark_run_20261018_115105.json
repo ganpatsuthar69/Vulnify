@@ -1,0 +1,767 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "run-20261018_115105",
+  "dataset_version": "1.0.0",
+  "corpus_id": "corpus-ecommerce-v1",
+  "started_at": "2026-10-18T11:51:05.544679+00:00",
+  "completed_at": "2026-10-18T11:51:05.551867+00:00",
+  "protocol": {
+    "protocol_version": "1.0.0",
+    "graph_system_name": "vulnify-graph-agent",
+    "rag_system_name": "text-rag-baseline",
+    "shared_model": "mistral-small-latest",
+    "shared_provider": "mistral",
+    "temperature": 0.0,
+    "max_tokens": 1000,
+    "retrieval_strategy": "bm25_text_chunks",
+    "top_k_chunks": 5
+  },
+  "summary": {
+    "total_cases": 20,
+    "graph_success_count": 20,
+    "rag_success_count": 20,
+    "graph_error_count": 0,
+    "rag_error_count": 0,
+    "graph_avg_duration_ms": 1.0,
+    "rag_avg_duration_ms": 1.0,
+    "by_category": {
+      "exposure": {
+        "total_cases": 4,
+        "graph_success_count": 4,
+        "rag_success_count": 4,
+        "graph_avg_duration_ms": 1.0,
+        "rag_avg_duration_ms": 1.0
+      },
+      "no_path": {
+        "total_cases": 4,
+        "graph_success_count": 4,
+        "rag_success_count": 4,
+        "graph_avg_duration_ms": 1.0,
+        "rag_avg_duration_ms": 1.0
+      },
+      "path_exists": {
+        "total_cases": 4,
+        "graph_success_count": 4,
+        "rag_success_count": 4,
+        "graph_avg_duration_ms": 1.0,
+        "rag_avg_duration_ms": 1.0
+      },
+      "ranking": {
+        "total_cases": 4,
+        "graph_success_count": 4,
+        "rag_success_count": 4,
+        "graph_avg_duration_ms": 1.0,
+        "rag_avg_duration_ms": 1.0
+      },
+      "remediation": {
+        "total_cases": 4,
+        "graph_success_count": 4,
+        "rag_success_count": 4,
+        "graph_avg_duration_ms": 1.0,
+        "rag_avg_duration_ms": 1.0
+      }
+    }
+  },
+  "cases": [
+    {
+      "case_id": "BM-001",
+      "category": "path_exists",
+      "difficulty": "easy",
+      "question": "Does authentication-service have a dependency path to vulnerable jsonwebtoken@8.5.1?",
+      "expected_conclusion": "Yes, a direct dependency path exists from authentication-service to jsonwebtoken@8.5.1 (depth 1).",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-002",
+      "category": "path_exists",
+      "difficulty": "easy",
+      "question": "What is the shortest reachability path from order-service to find-my-way@3.0.0?",
+      "expected_conclusion": "The shortest path is transitive with depth 2: order-service -> fastify@3.29.0 -> find-my-way@3.0.0.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-003",
+      "category": "path_exists",
+      "difficulty": "medium",
+      "question": "How many hops separate checkout-service from vulnerable lodash@4.17.15, and what intermediate packages are traversed?",
+      "expected_conclusion": "Exactly 3 hops separate checkout-service from lodash@4.17.15 via auth-client@1.2.0 and token-verifier@2.1.0.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-004",
+      "category": "path_exists",
+      "difficulty": "hard",
+      "question": "Does web-frontend reach vulnerable redis-parser@3.0.0 across service boundaries?",
+      "expected_conclusion": "Yes, web-frontend reaches redis-parser@3.0.0 across service boundaries via cart-service (web-frontend -[CALLS]-> cart-service -[DEPENDS_ON]-> redis-parser@3.0.0).",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-005",
+      "category": "no_path",
+      "difficulty": "easy",
+      "question": "Can payment-processor reach vulnerable pyyaml@5.3.1?",
+      "expected_conclusion": "No dependency path found from payment-processor to pyyaml@5.3.1 within evaluated traversal bounds.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-006",
+      "category": "no_path",
+      "difficulty": "medium",
+      "question": "Is vulnerable uritools@3.0.0 reached by notification-service in the active project graph?",
+      "expected_conclusion": "No path exists from notification-service to uritools@3.0.0; the package version exists in the ecosystem node catalog but has zero inbound dependency edges.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-007",
+      "category": "no_path",
+      "difficulty": "medium",
+      "question": "Does devDependencies-only jest@26.6.3 expose the production api-service runtime?",
+      "expected_conclusion": "No, devDependencies are pruned from production container images and excluded from the production service dependency graph.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-008",
+      "category": "no_path",
+      "difficulty": "hard",
+      "question": "Can background batch-exporter trigger or reach vulnerable express@4.16.0 HTTP routes?",
+      "expected_conclusion": "No path found; batch-exporter is an offline producer with no inbound listeners or dependency edges to express@4.16.0.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-009",
+      "category": "exposure",
+      "difficulty": "easy",
+      "question": "Is vulnerable node-forge@0.10.0 architecturally exposed to internet ingress?",
+      "expected_conclusion": "Yes, public-api has internet_facing=true and reaches node-forge@0.10.0 at depth 2 (public-api -> crypto-utils -> node-forge@0.10.0).",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-010",
+      "category": "exposure",
+      "difficulty": "easy",
+      "question": "What is the network exposure boundary for xml2js@0.4.23 reached by offline-batch-job?",
+      "expected_conclusion": "Internal only; offline-batch-job has internet_facing=false and has no public ingress routes.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-011",
+      "category": "exposure",
+      "difficulty": "medium",
+      "question": "How does Vulnify evaluate the exposure of legacy-importer when its internet-facing ingress signal is missing?",
+      "expected_conclusion": "Exposure is evaluated as unknown; Vulnify preserves uncertainty and never defaults missing ingress metadata to safe or zero risk.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-012",
+      "category": "exposure",
+      "difficulty": "hard",
+      "question": "Are synthetic edges present in the reachability path from gateway-service to bcryptjs@2.4.3?",
+      "expected_conclusion": "Yes, the path combines a synthetic RPC call edge (origin: synthetic) to auth-service and a manifest lockfile edge (origin: manifest) to bcryptjs@2.4.3.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-013",
+      "category": "ranking",
+      "difficulty": "easy",
+      "question": "Why is finding find-crit-001 (OSV-EXAMPLE-CRIT-001) assigned to the Highest priority band?",
+      "expected_conclusion": "find-crit-001 is placed in the Highest priority band because it has severity CRITICAL, version match affected, and a confirmed reachable path (depth 1).",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-014",
+      "category": "ranking",
+      "difficulty": "medium",
+      "question": "What priority band is assigned to a High-severity finding when graph traversal returns no path found?",
+      "expected_conclusion": "It is assigned to the Medium priority band; high-severity findings with unconfirmed reachability are downgraded to Medium, never dropped to Low.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-015",
+      "category": "ranking",
+      "difficulty": "medium",
+      "question": "How does the scoring engine prioritize a finding when upstream advisory severity is unknown?",
+      "expected_conclusion": "It is assigned to the Medium priority band; missing severity is treated as UNKNOWN and handled conservatively, never assumed to be Low or zero risk.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-016",
+      "category": "ranking",
+      "difficulty": "hard",
+      "question": "How does Vulnify break ties between two High-priority findings with identical HIGH severity?",
+      "expected_conclusion": "Vulnify evaluates deterministic Tie-Breakers in order: Tie-Breaker 3 (path presence), Tie-Breaker 4 (path depth ascending: shorter path first), Tie-Breaker 5 (actionable fix availability), and Tie-Breaker 6 (alphanumeric sort).",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-017",
+      "category": "remediation",
+      "difficulty": "easy",
+      "question": "What is the recommended non-breaking upgrade for semver@5.7.1 affected by OSV-EXAMPLE-PATCH-001?",
+      "expected_conclusion": "Upgrade to semver@5.7.2; this is an actionable patch-level fix with low breaking risk, though project regression testing is recommended.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-018",
+      "category": "remediation",
+      "difficulty": "medium",
+      "question": "What remediation recommendation is provided for unmaintained-parser@1.0.0 when OSV-EXAMPLE-NOFIX-001 has no fixed version?",
+      "expected_conclusion": "The system reports that no fixed version is available upstream; it advises alternative defensive measures (package substitution or network isolation) and never invents a fictional patch version.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-019",
+      "category": "remediation",
+      "difficulty": "medium",
+      "question": "How does Vulnify classify the SemVer compatibility risk of upgrading axios from 0.21.1 to 1.6.0?",
+      "expected_conclusion": "It is classified as a Major SemVer Jump (0.x to 1.x) with high probability of breaking API changes, requiring thorough integration and regression testing.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    },
+    {
+      "case_id": "BM-020",
+      "category": "remediation",
+      "difficulty": "hard",
+      "question": "What security controls prevent the agent from automatically creating a GitHub remediation issue or submitting hostile advisory HTML?",
+      "expected_conclusion": "Issue creation is write-gated, requiring explicit human approval (confirmed: true) bound to a SHA-256 plan hash; untrusted advisory text is neutralized into quoted Markdown blocks and never rendered as HTML.",
+      "graph_result": {
+        "system_id": "graph_agent",
+        "status": "success",
+        "answer": "[DRY RUN] Graph analysis simulated.",
+        "evidence_references": [
+          "cypher:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      },
+      "rag_result": {
+        "system_id": "rag_baseline",
+        "status": "success",
+        "answer": "[DRY RUN] RAG retrieval simulated.",
+        "evidence_references": [
+          "chunk:mock"
+        ],
+        "retrieval_metadata": {
+          "dry_run": true
+        },
+        "duration_ms": 1.0,
+        "tokens_used": null,
+        "error_message": null
+      }
+    }
+  ]
+}

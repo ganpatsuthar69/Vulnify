@@ -257,3 +257,27 @@ def test_falkor_repository_direct_integration() -> None:
         client.get_graph().query("MATCH (u:User {email: $email}) DELETE u", {"email": test_email})
     except Exception as e:
         pytest.skip(f"FalkorDB direct test skipped: {e}")
+
+
+def test_secret_encryption_and_decryption_roundtrip() -> None:
+    """Verify AES-256-GCM authenticated encryption preserves secrets and guards against tampering."""
+    from vulnify.security import decrypt_secret, encrypt_secret
+
+    sample_api_key = "mistral_api_key_secret_token_12345"
+    encrypted = encrypt_secret(sample_api_key, secret_key=TEST_SESSION_SECRET)
+
+    assert encrypted.startswith("enc:v1:")
+    assert sample_api_key not in encrypted
+
+    # Successful roundtrip
+    decrypted = decrypt_secret(encrypted, secret_key=TEST_SESSION_SECRET)
+    assert decrypted == sample_api_key
+
+    # Plaintext fallback for legacy unencrypted strings
+    assert decrypt_secret("legacy_plain_key") == "legacy_plain_key"
+    assert decrypt_secret("") == ""
+
+    # Tampered ciphertext raises error
+    tampered = encrypted[:-4] + "AAAA"
+    with pytest.raises(Exception):
+        decrypt_secret(tampered, secret_key=TEST_SESSION_SECRET)

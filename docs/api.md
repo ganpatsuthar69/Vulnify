@@ -2494,15 +2494,15 @@ Lists all GitHub issues created for findings in the specified project.
   {
     "category": "path_exists",
     "dry_run": false,
-    "llm_provider": "auto",
-    "llm_model": "gpt-4o-mini",
+    "llm_provider": "mistral",
+    "llm_model": "mistral-small-latest",
     "temperature": 0.0
   }
   ```
   - `category` (string, optional): Restrict execution to a single category (`path_exists`, `no_path`, `exposure`, `ranking`, `remediation`). If omitted, runs all categories.
   - `dry_run` (boolean, optional): If `true`, runs harness verification without live LLM calls. Default `false`.
-  - `llm_provider` (string, optional): LLM provider (`auto`, `openai`, `gemini`, `deterministic_test`). Default `"auto"`.
-  - `llm_model` (string, optional): Model identifier. Default `"gpt-4o-mini"`.
+  - `llm_provider` (string, optional): LLM provider (`mistral`, `auto`, `openai`, `gemini`, `deterministic_test`). Default `"mistral"`.
+  - `llm_model` (string, optional): Model identifier. Default `"mistral-small-latest"`.
   - `temperature` (number, optional): Generation temperature. Default `0.0`.
 - **Response**: `200 OK` (returns completed `BenchmarkRunResult`).
 - **Status Codes**:

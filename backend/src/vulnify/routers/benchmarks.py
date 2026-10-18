@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, status
 
-from vulnify.benchmarks.loader import load_benchmark_dataset
+from vulnify.benchmarks.loader import load_benchmark_dataset, resolve_benchmark_path
 from vulnify.benchmarks.models import (
     BenchmarkCase,
     BenchmarkCategory,
@@ -129,7 +129,7 @@ async def get_latest_benchmark_result() -> BenchmarkRunResult:
 
     Returns 404 if no benchmark comparison run exists yet (AC2: 'no results yet' state).
     """
-    latest_file = Path("benchmarks/results/latest_run.json")
+    latest_file = resolve_benchmark_path("benchmarks/results/latest_run.json", "results/latest_run.json")
     if not latest_file.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -166,7 +166,7 @@ class BenchmarkRunMetadata(BaseModel):
 )
 async def list_benchmark_results() -> list[BenchmarkRunMetadata]:
     """List available benchmark comparison run JSON artifacts with metadata."""
-    results_dir = Path("benchmarks/results")
+    results_dir = resolve_benchmark_path("benchmarks/results", "results")
     if not results_dir.exists():
         return []
 
@@ -217,7 +217,8 @@ async def get_historical_benchmark_result(filename: str) -> BenchmarkRunResult:
             detail="Invalid benchmark run filename.",
         )
 
-    target_file = Path("benchmarks/results") / clean_name
+    results_dir = resolve_benchmark_path("benchmarks/results", "results")
+    target_file = results_dir / clean_name
     if not target_file.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -238,8 +239,8 @@ async def get_historical_benchmark_result(filename: str) -> BenchmarkRunResult:
 class TriggerBenchmarkRunRequest(BaseModel):
     category: BenchmarkCategory | None = None
     dry_run: bool = False
-    llm_provider: str = "auto"
-    llm_model: str = "gpt-4o-mini"
+    llm_provider: str | None = None
+    llm_model: str | None = None
     temperature: float = 0.0
 
 
@@ -251,17 +252,22 @@ class TriggerBenchmarkRunRequest(BaseModel):
 async def trigger_benchmark_run(req: TriggerBenchmarkRunRequest) -> BenchmarkRunResult:
     """Execute a single-command fair comparison run between Graph Agent and RAG Baseline."""
     from vulnify.benchmarks.runner import run_benchmark_comparison
+    from vulnify.config import get_settings
 
     try:
+        settings = get_settings()
         cat_str = req.category.value if req.category else None
-        target_path = "benchmarks/results/latest_run.json" if not cat_str else f"benchmarks/results/run_{cat_str}.json"
+        target_name = "latest_run.json" if not cat_str else f"run_{cat_str}.json"
+        target_path = resolve_benchmark_path(f"benchmarks/results/{target_name}", f"results/{target_name}")
+        dataset_path = resolve_benchmark_path("benchmarks/benchmark_dataset.json", "benchmark_dataset.json")
+        corpus_path = resolve_benchmark_path("benchmarks/evidence_corpus.json", "evidence_corpus.json")
         return await run_benchmark_comparison(
-            dataset_path="benchmarks/benchmark_dataset.json",
-            corpus_path="benchmarks/evidence_corpus.json",
+            dataset_path=dataset_path,
+            corpus_path=corpus_path,
             output_path=target_path,
             category=cat_str,
-            llm_provider=req.llm_provider,
-            llm_model=req.llm_model,
+            llm_provider=req.llm_provider or settings.AGENT_LLM_PROVIDER,
+            llm_model=req.llm_model or settings.AGENT_LLM_MODEL,
             temperature=req.temperature,
             dry_run=req.dry_run,
             quiet=True,

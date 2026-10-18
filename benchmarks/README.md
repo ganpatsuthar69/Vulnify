@@ -178,9 +178,8 @@ backend\.venv\Scripts\python.exe -m vulnify.benchmarks.runner
 --corpus PATH        Path to evidence corpus (default: benchmarks/evidence_corpus.json)
 --output PATH        Target output JSON file (default: benchmarks/results/latest_run.json)
 --category CAT       Filter by category (path_exists, no_path, exposure, ranking, remediation)
---cases ID1,ID2      Comma-separated case IDs to evaluate (e.g. BM-001,BM-002)
---llm-provider NAME  Provider override (auto, openai, gemini, deterministic_test)
---llm-model NAME     Model name override (default: gpt-4o-mini)
+--llm-provider NAME  Provider override (mistral, auto, openai, gemini, deterministic_test)
+--llm-model NAME     Model name override (default: mistral-small-latest)
 --temperature FLOAT  Sampling temperature (default: 0.0)
 --dry-run            Simulate execution without LLM calls
 --quiet              Suppress per-case execution logging

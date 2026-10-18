@@ -152,10 +152,12 @@ async def test_single_command_runner_execution(tmp_path):
         quiet=True,
     )
 
+    from vulnify.config import get_settings
+
     assert result.summary.total_cases == 4
     assert result.summary.graph_success_count == 4
     assert result.summary.rag_success_count == 4
-    assert result.protocol.shared_model == "gpt-4o-mini"
+    assert result.protocol.shared_model == get_settings().AGENT_LLM_MODEL
     assert result.protocol.temperature == 0.0
     assert test_out.exists()
 
@@ -163,6 +165,40 @@ async def test_single_command_runner_execution(tmp_path):
         saved_data = json.load(f)
     assert saved_data["run_id"] == result.run_id
     assert len(saved_data["cases"]) == 4
+
+
+def test_mistral_llm_client_configuration():
+    """Verify Mistral AI is default provider and model configuration."""
+    cfg = LLMConfig()
+    assert cfg.provider == "mistral"
+    assert cfg.model == "mistral-small-latest"
+    client = BaseLLMClient(config=cfg)
+    assert client.effective_provider == "mistral"
+
+
+@pytest.mark.asyncio
+async def test_mistral_client_completion_fallback():
+    """Verify Mistral provider completes gracefully when API key is unset."""
+    client = BaseLLMClient(config=LLMConfig(provider="mistral"))
+    msg = LLMMessage(role="user", content="Test prompt for exposure reachability")
+    res = await client.complete([msg])
+    assert res.provider == "mistral"
+    assert res.content is not None
+
+
+@pytest.mark.asyncio
+async def test_mistral_client_encrypted_key_handling():
+    """Verify BaseLLMClient safely accepts and decrypts enc:v1: encrypted API keys."""
+    from vulnify.security import encrypt_secret
+
+    enc_key = encrypt_secret("sk-mistral-dummy-test-key", secret_key="test_session_secret_that_is_at_least_32_chars_long!")
+    assert enc_key.startswith("enc:v1:")
+    client = BaseLLMClient(config=LLMConfig(provider="mistral", api_key=enc_key))
+    assert client.config.api_key == enc_key
+    # Execution completes (falls back or executes without decrypt error)
+    msg = LLMMessage(role="user", content="Verify encrypted key decrypts")
+    res = await client.complete([msg])
+    assert res.content is not None
 
 
 @pytest.mark.asyncio

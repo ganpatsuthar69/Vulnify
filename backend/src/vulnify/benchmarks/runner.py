@@ -27,7 +27,7 @@ from vulnify.benchmarks.corpus import EvidenceCorpus, load_evidence_corpus
 from vulnify.benchmarks.evaluator import CaseEvaluationMetrics, evaluate_system_answer
 from vulnify.benchmarks.graph_adapter import GraphAgentPipeline
 from vulnify.benchmarks.llm import BaseLLMClient, LLMConfig
-from vulnify.benchmarks.loader import load_benchmark_dataset
+from vulnify.benchmarks.loader import load_benchmark_dataset, resolve_benchmark_path
 from vulnify.benchmarks.models import BenchmarkCase, BenchmarkDataset
 from vulnify.benchmarks.rag_baseline import RAGBaselinePipeline
 from vulnify.benchmarks.result_models import (
@@ -47,14 +47,20 @@ async def run_benchmark_comparison(
     output_path: Path | str = "benchmarks/results/latest_run.json",
     category: str | None = None,
     case_ids: list[str] | None = None,
-    llm_provider: str = "auto",
-    llm_model: str = "gpt-4o-mini",
+    llm_provider: str | None = None,
+    llm_model: str | None = None,
     temperature: float = 0.0,
     max_tokens: int = 1000,
     dry_run: bool = False,
     quiet: bool = False,
 ) -> BenchmarkRunResult:
     """Execute fair benchmark comparison between Vulnify Graph Agent and RAG Baseline."""
+    from vulnify.config import get_settings
+
+    settings = get_settings()
+    effective_provider = llm_provider or settings.AGENT_LLM_PROVIDER
+    effective_model = llm_model or settings.AGENT_LLM_MODEL
+
     start_time = datetime.now(timezone.utc)
     started_at_iso = start_time.isoformat()
     run_timestamp = start_time.strftime("%Y%m%d_%H%M%S")
@@ -76,8 +82,8 @@ async def run_benchmark_comparison(
 
     # 2. Configure Unified LLM Client (Strictly Shared by Both Systems)
     llm_config = LLMConfig(
-        provider=llm_provider,
-        model=llm_model,
+        provider=effective_provider,
+        model=effective_model,
         temperature=temperature,
         max_tokens=max_tokens,
     )
@@ -91,7 +97,7 @@ async def run_benchmark_comparison(
         protocol_version="1.0.0",
         graph_system_name="vulnify-graph-agent",
         rag_system_name="text-rag-baseline",
-        shared_model=llm_model,
+        shared_model=effective_model,
         shared_provider=shared_llm_client.effective_provider,
         temperature=temperature,
         max_tokens=max_tokens,
@@ -213,7 +219,7 @@ async def run_benchmark_comparison(
     )
 
     # 6. Write JSON Results to Disk
-    target_out = Path(output_path)
+    target_out = resolve_benchmark_path(output_path, "results/latest_run.json")
     target_out.parent.mkdir(parents=True, exist_ok=True)
     with target_out.open("w", encoding="utf-8") as f:
         json.dump(run_result.model_dump(), f, indent=2)
@@ -290,8 +296,8 @@ def main() -> None:
     parser.add_argument("--output", default="benchmarks/results/latest_run.json", help="Target output JSON path.")
     parser.add_argument("--category", choices=["path_exists", "no_path", "exposure", "ranking", "remediation"], help="Filter by category.")
     parser.add_argument("--cases", help="Comma-separated case IDs to evaluate (e.g. BM-001,BM-002).")
-    parser.add_argument("--llm-provider", default="auto", choices=["auto", "openai", "gemini", "deterministic_test"], help="LLM provider.")
-    parser.add_argument("--llm-model", default="gpt-4o-mini", help="Model name.")
+    parser.add_argument("--llm-provider", default="mistral", choices=["mistral", "auto", "openai", "gemini", "deterministic_test"], help="LLM provider.")
+    parser.add_argument("--llm-model", default="mistral-small-latest", help="Model name.")
     parser.add_argument("--temperature", type=float, default=0.0, help="Sampling temperature.")
     parser.add_argument("--dry-run", action="store_true", help="Run harness in dry-run mode without invoking LLM.")
     parser.add_argument("--quiet", action="store_true", help="Suppress verbose execution output.")
