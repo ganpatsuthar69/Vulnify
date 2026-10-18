@@ -222,7 +222,8 @@ async def test_runner_dry_run(tmp_path):
 
 def test_results_json_schema_validation():
     """Verify that generated benchmark results validate against benchmarks/results_schema.json."""
-    latest_file = Path("benchmarks/results/latest_run.json")
+    from vulnify.benchmarks.loader import resolve_benchmark_path
+    latest_file = resolve_benchmark_path("benchmarks/results/latest_run.json")
     assert latest_file.exists(), "Latest benchmark run result file must exist."
 
     with latest_file.open("r", encoding="utf-8") as f:

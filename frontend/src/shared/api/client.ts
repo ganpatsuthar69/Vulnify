@@ -18,8 +18,14 @@ export class ApiClientError extends Error {
   }
 }
 
-export function isMockMode(): boolean {
-  return import.meta.env.VITE_USE_MOCK === 'true'
+export function getApiUrl(path: string): string {
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+  if (!baseUrl) {
+    return path.startsWith('/') ? path : `/${path}`
+  }
+  const cleanBase = baseUrl.replace(/\/+$/, '')
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
+  return `${cleanBase}${cleanPath}`
 }
 
 export async function parseApiError(

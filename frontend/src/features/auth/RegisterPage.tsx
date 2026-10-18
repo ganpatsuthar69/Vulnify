@@ -26,8 +26,6 @@ export function RegisterPage() {
   const [confirmInvalid, setConfirmInvalid] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const isMockMode = import.meta.env.VITE_USE_MOCK === 'true'
-
   if (status === 'authenticated') {
     return <Navigate to="/" replace />
   }
@@ -108,14 +106,6 @@ export function RegisterPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#0b121a] px-4 py-12 text-slate-200">
       <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0f1822] p-8 shadow-2xl shadow-black/60">
-        {isMockMode && (
-          <div
-            role="note"
-            className="mb-6 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-xs font-semibold tracking-wider text-amber-300 uppercase"
-          >
-            Mock registration mode
-          </div>
-        )}
 
         {/* Header with Vulnify logo */}
         <div className="mb-8 text-center">

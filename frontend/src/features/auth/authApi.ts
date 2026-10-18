@@ -1,5 +1,5 @@
 import type { AuthUser } from './types'
-import { ApiClientError, isMockMode, parseApiError } from '@/shared/api/client'
+import { ApiClientError, getApiUrl, parseApiError } from '@/shared/api/client'
 import type { ApiClientErrorOptions } from '@/shared/types/api'
 
 export class AuthApiError extends ApiClientError {
@@ -24,50 +24,13 @@ export function notifyUnauthorized(): void {
 
 export { parseApiError }
 
-// In-memory mock storage when VITE_USE_MOCK=true
-interface MockStoredUser {
-  id: string
-  email: string
-  name: string
-  password: string
-  role: 'user' | 'admin'
-}
-
-const mockUsersDatabase = new Map<string, MockStoredUser>()
-let mockSessionUser: AuthUser | null = null
-
 export async function register(name: string, email: string, password: string): Promise<AuthUser> {
   const cleanedEmail = email.trim().toLowerCase()
   const cleanedName = name.trim()
 
-  if (isMockMode()) {
-    if (mockUsersDatabase.has(cleanedEmail)) {
-      throw new AuthApiError('An account with this email already exists.', {
-        status: 409,
-        code: 'CONFLICT',
-        requestId: `req-mock-${Date.now()}`,
-      })
-    }
-    const newUser: MockStoredUser = {
-      id: `mock-user-${Date.now()}`,
-      email: cleanedEmail,
-      name: cleanedName,
-      password,
-      role: 'user',
-    }
-    mockUsersDatabase.set(cleanedEmail, newUser)
-    mockSessionUser = {
-      id: newUser.id,
-      email: newUser.email,
-      name: newUser.name,
-      role: newUser.role,
-    }
-    return mockSessionUser
-  }
-
   let response: Response
   try {
-    response = await fetch('/api/auth/register', {
+    response = await fetch(getApiUrl('/api/auth/register'), {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -98,44 +61,9 @@ export async function register(name: string, email: string, password: string): P
 export async function login(email: string, password: string): Promise<AuthUser> {
   const cleanedEmail = email.trim().toLowerCase()
 
-  if (isMockMode()) {
-    const existing = mockUsersDatabase.get(cleanedEmail)
-    // If mock mode is used without prior registration, allow admin demo credentials if configured
-    const configuredMockPassword = import.meta.env.VITE_MOCK_ADMIN_PASSWORD
-    if (
-      configuredMockPassword &&
-      (cleanedEmail === 'admin@vulnify.local' || cleanedEmail === 'admin') &&
-      password === configuredMockPassword
-    ) {
-      mockSessionUser = {
-        id: 'mock-admin-1',
-        email: 'admin@vulnify.local',
-        name: 'Administrator',
-        role: 'admin',
-      }
-      return mockSessionUser
-    }
-
-    if (existing && existing.password === password) {
-      mockSessionUser = {
-        id: existing.id,
-        email: existing.email,
-        name: existing.name,
-        role: existing.role,
-      }
-      return mockSessionUser
-    }
-
-    throw new AuthApiError('Invalid email or password.', {
-      status: 401,
-      code: 'INVALID_CREDENTIALS',
-      requestId: `req-mock-${Date.now()}`,
-    })
-  }
-
   let response: Response
   try {
-    response = await fetch('/api/auth/login', {
+    response = await fetch(getApiUrl('/api/auth/login'), {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -170,21 +98,9 @@ export async function login(email: string, password: string): Promise<AuthUser> 
 }
 
 export async function me(): Promise<AuthUser> {
-  if (isMockMode()) {
-    if (mockSessionUser) {
-      return mockSessionUser
-    }
-    notifyUnauthorized()
-    throw new AuthApiError('Authentication required.', {
-      status: 401,
-      code: 'AUTHENTICATION_REQUIRED',
-      requestId: `req-mock-${Date.now()}`,
-    })
-  }
-
   let response: Response
   try {
-    response = await fetch('/api/auth/me', {
+    response = await fetch(getApiUrl('/api/auth/me'), {
       method: 'GET',
       credentials: 'include',
     })
@@ -218,15 +134,9 @@ export async function me(): Promise<AuthUser> {
 }
 
 export async function logout(): Promise<void> {
-  if (isMockMode()) {
-    mockSessionUser = null
-    notifyUnauthorized()
-    return
-  }
-
   let response: Response
   try {
-    response = await fetch('/api/auth/logout', {
+    response = await fetch(getApiUrl('/api/auth/logout'), {
       method: 'POST',
       credentials: 'include',
       headers: {

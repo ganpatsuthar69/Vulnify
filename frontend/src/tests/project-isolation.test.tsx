@@ -311,11 +311,82 @@ describe('Frontend Multi-Project Data Isolation & Switching', () => {
     })
   })
 
-  it('mock API store isolates findings and decisions between distinct project IDs', async () => {
-    vi.stubEnv('VITE_USE_MOCK', 'true')
+  it('API client isolates findings and decisions between distinct project IDs', async () => {
+    const alphaFindingItem = {
+      id: 'alpha-f-1',
+      project_id: 'proj-alpha',
+      service_id: 'svc-alpha',
+      service_name: 'alpha-service',
+      advisory_id: 'GHSA-alpha-1',
+      package_name: 'alpha-pkg',
+      package_version: '1.0.0',
+      status: 'open',
+    }
+    const betaFindingItem = {
+      id: 'beta-f-1',
+      project_id: 'proj-beta',
+      service_id: 'svc-beta',
+      service_name: 'beta-service',
+      advisory_id: 'GHSA-beta-1',
+      package_name: 'beta-pkg',
+      package_version: '2.0.0',
+      status: 'open',
+    }
+
+    let alphaStatus = 'open'
+    let alphaJustification: string | null = null
+
+    const fetchMock = vi.fn().mockImplementation(async (url: string, opts?: RequestInit) => {
+      if (url.includes('/api/projects/proj-alpha/findings/alpha-f-1/decision') && opts?.method === 'POST') {
+        const body = JSON.parse(opts.body as string)
+        alphaStatus = body.status
+        alphaJustification = body.justification
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            project_id: 'proj-alpha',
+            finding_id: 'alpha-f-1',
+            status: alphaStatus,
+            justification: alphaJustification,
+          }),
+        }
+      }
+      if (url.includes('/api/projects/proj-alpha/findings')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            items: [{ ...alphaFindingItem, status: alphaStatus, triage_justification: alphaJustification }],
+            total: 1,
+            page: 1,
+            page_size: 25,
+            total_pages: 1,
+          }),
+        }
+      }
+      if (url.includes('/api/projects/proj-beta/findings')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            items: [betaFindingItem],
+            total: 1,
+            page: 1,
+            page_size: 25,
+            total_pages: 1,
+          }),
+        }
+      }
+      return { ok: true, status: 200, json: async () => ({}) }
+    })
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = fetchMock as any
+
     try {
-      const alphaFindings = await getProjectFindings('mock-proj-1')
-      const betaFindings = await getProjectFindings('mock-proj-2')
+      const alphaFindings = await getProjectFindings('proj-alpha')
+      const betaFindings = await getProjectFindings('proj-beta')
 
       expect(alphaFindings.items.length).toBeGreaterThan(0)
       expect(betaFindings.items.length).toBeGreaterThan(0)
@@ -324,24 +395,24 @@ describe('Frontend Multi-Project Data Isolation & Switching', () => {
       expect(firstAlphaFinding.status).toBe('open')
 
       // Record decision on alpha finding
-      await recordFindingDecision('mock-proj-1', firstAlphaFinding.id, {
+      await recordFindingDecision('proj-alpha', firstAlphaFinding.id, {
         status: 'not_affected',
         justification: 'Project 1 specific justification',
       })
 
       // Alpha finding reflects updated status
-      const alphaAfter = await getProjectFindings('mock-proj-1')
+      const alphaAfter = await getProjectFindings('proj-alpha')
       const updatedAlpha = alphaAfter.items.find((f) => f.id === firstAlphaFinding.id)
       expect(updatedAlpha?.status).toBe('not_affected')
 
       // Beta findings must remain unaffected ('open')
-      const betaAfter = await getProjectFindings('mock-proj-2')
+      const betaAfter = await getProjectFindings('proj-beta')
       for (const item of betaAfter.items) {
         expect(item.status).toBe('open')
         expect(item.triage_justification).toBeFalsy()
       }
     } finally {
-      vi.unstubAllEnvs()
+      globalThis.fetch = originalFetch
     }
   })
 })
