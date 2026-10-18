@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     OSV_MAX_CONCURRENT_REQUESTS: int = 5
     OSV_BATCH_SIZE: int = 100
 
-    # GitHub Integration Configuration (US-503 / US-504)
+    # GitHub Integration Configuration
     GITHUB_API_BASE_URL: str = "https://api.github.com"
     GITHUB_TOKEN: str | None = None
     GITHUB_DEFAULT_OWNER: str = "vulnify"
@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     GITHUB_API_TIMEOUT_SECONDS: int = 15
     GITHUB_API_VERSION: str = "2022-11-28"
 
-    # Agent Investigation Configuration (US-602)
+    # Agent Investigation Configuration
     AGENT_STEP_LIMIT: int = 10
     AGENT_RUN_TIMEOUT_SECONDS: int = 60
     AGENT_LLM_PROVIDER: str = "mistral"
