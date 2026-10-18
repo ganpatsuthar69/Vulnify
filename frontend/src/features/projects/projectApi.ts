@@ -481,12 +481,14 @@ export async function importAdvisories(
       advisories_updated: 0,
       relationships_created: existing.length,
       relationships_reused: 0,
+      packages_with_advisories: existing.length,
       packages_with_no_advisories: 7,
       skipped_packages: 0,
       failed_lookups: 0,
       status: 'completed',
       errors: [],
       duration_ms: 185.4,
+      package_results: [],
     }
   }
 

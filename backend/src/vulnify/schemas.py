@@ -251,6 +251,18 @@ class ImportSummaryResponse(BaseModel):
     job_id: str | None = Field(default=None, description="Associated IngestionJob identifier")
 
 
+class OsvPackageOutcomeResponse(BaseModel):
+    package_version_id: str = Field(..., description="PackageVersion node identifier")
+    name: str = Field(..., description="Package name")
+    version: str = Field(..., description="Package version")
+    ecosystem: str = Field(..., description="Package ecosystem as stored")
+    outcome: Literal["advisories_found", "no_advisories", "skipped", "query_failed"] = Field(
+        ..., description="Explicit scan outcome for this package version"
+    )
+    advisory_ids: list[str] = Field(default_factory=list, description="OSV advisory IDs returned for this version")
+    reason: str | None = Field(default=None, description="Why the package was skipped or the query failed")
+
+
 class OsvImportSummaryResponse(BaseModel):
     project_id: str = Field(..., description="Project ID")
     total_package_versions: int = Field(..., description="Total package-version records considered")
@@ -262,13 +274,17 @@ class OsvImportSummaryResponse(BaseModel):
     advisories_updated: int = Field(..., description="Existing Vulnerability nodes refreshed in FalkorDB")
     relationships_created: int = Field(..., description="New package-to-advisory relationships created")
     relationships_reused: int = Field(..., description="Existing package-to-advisory relationships reused")
-    packages_with_no_advisories: int = Field(..., description="Eligible packages with zero matching advisories")
+    packages_with_advisories: int = Field(default=0, description="Package versions with at least one advisory")
+    packages_with_no_advisories: int = Field(..., description="Package versions OSV confirmed have zero advisories")
     skipped_packages: int = Field(..., description="Packages skipped due to missing version or ecosystem")
-    failed_lookups: int = Field(..., description="Lookups that failed due to network or upstream errors")
+    failed_lookups: int = Field(..., description="Package versions whose lookup failed due to network or upstream errors")
     status: Literal["completed", "partial_failure", "failed", "skipped"] = Field(..., description="Overall ingestion status")
     errors: list[str] = Field(default_factory=list, description="Descriptions of any failures or issues")
     duration_ms: float = Field(..., description="Total duration of the ingestion operation in milliseconds")
     job_id: str | None = Field(default=None, description="Associated IngestionJob identifier")
+    package_results: list[OsvPackageOutcomeResponse] = Field(
+        default_factory=list, description="Per-package-version scan outcomes"
+    )
 
 
 class ProjectAdvisoryResponse(BaseModel):

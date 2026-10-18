@@ -13,7 +13,26 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router'
 import { importAdvisories, getProjectAdvisories, ProjectApiError } from '../projects/projectApi'
-import type { OsvImportSummary, Project, ProjectAdvisory } from '../projects/types'
+import type {
+  OsvImportSummary,
+  OsvPackageOutcomeKind,
+  Project,
+  ProjectAdvisory,
+} from '../projects/types'
+
+const STATUS_HEADINGS: Record<OsvImportSummary['status'], string> = {
+  completed: 'OSV Scan Completed',
+  partial_failure: 'OSV Scan Completed with Failed Lookups',
+  failed: 'OSV Scan Failed',
+  skipped: 'No Packages Scanned',
+}
+
+const OUTCOME_BADGES: Record<OsvPackageOutcomeKind, { label: string; className: string }> = {
+  advisories_found: { label: 'Advisories found', className: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
+  no_advisories: { label: 'No advisories', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
+  skipped: { label: 'Skipped', className: 'border-slate-600 bg-slate-800 text-slate-300' },
+  query_failed: { label: 'Query failed', className: 'border-red-500/30 bg-red-500/10 text-red-300' },
+}
 
 interface OsvAdvisoryCardProps {
   project: Project
@@ -178,13 +197,7 @@ export function OsvAdvisoryCard({ project }: OsvAdvisoryCardProps) {
               ) : (
                 <AlertTriangle className="h-4 w-4 text-amber-400" aria-hidden="true" />
               )}
-              <span className="font-semibold text-white">
-                {summary.status === 'completed'
-                  ? 'OSV Ingestion Completed'
-                  : summary.status === 'partial_failure'
-                    ? 'OSV Ingestion Completed with Partial Warnings'
-                    : 'OSV Ingestion Notice'}
-              </span>
+              <span className="font-semibold text-white">{STATUS_HEADINGS[summary.status]}</span>
             </div>
             <span className="font-mono text-[11px] text-slate-400">
               {summary.duration_ms.toFixed(1)} ms
@@ -195,47 +208,45 @@ export function OsvAdvisoryCard({ project }: OsvAdvisoryCardProps) {
             <div className="rounded-lg bg-slate-900/50 p-2.5 border border-slate-800">
               <div className="text-[11px] text-slate-400">Packages Evaluated</div>
               <div className="text-base font-bold text-white mt-0.5">
-                {summary.total_package_versions}
+                {summary.eligible_package_versions} / {summary.total_package_versions}
               </div>
-              <div className="text-[10px] text-slate-500">
-                {summary.unique_lookups} unique queries
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-slate-900/50 p-2.5 border border-slate-800">
-              <div className="text-[11px] text-slate-400">Cache Hits</div>
-              <div className="text-base font-bold text-sky-400 mt-0.5">
-                {summary.cache_hits}
-              </div>
-              <div className="text-[10px] text-slate-500">
-                {summary.unique_lookups > 0
-                  ? `${Math.round((summary.cache_hits / summary.unique_lookups) * 100)}% hit rate`
-                  : '0% hit rate'}
+              <div className="text-[10px] text-slate-400">
+                {summary.unique_lookups} unique queries · {summary.cache_hits} cache hits
               </div>
             </div>
 
             <div className="rounded-lg bg-slate-900/50 p-2.5 border border-slate-800">
-              <div className="text-[11px] text-slate-400">Advisories Found</div>
+              <div className="text-[11px] text-slate-400">With Advisories</div>
               <div
                 className={`text-base font-bold mt-0.5 ${
-                  summary.advisories_found > 0 ? 'text-amber-400' : 'text-emerald-400'
+                  summary.packages_with_advisories > 0 ? 'text-amber-400' : 'text-white'
                 }`}
               >
-                {summary.advisories_found}
+                {summary.packages_with_advisories}
               </div>
-              <div className="text-[10px] text-slate-500">
-                {summary.advisories_created} new persisted
+              <div className="text-[10px] text-slate-400">
+                {summary.advisories_found} advisory matches · {summary.advisories_created} new
               </div>
             </div>
 
             <div className="rounded-lg bg-slate-900/50 p-2.5 border border-slate-800">
-              <div className="text-[11px] text-slate-400">Clean Packages</div>
+              <div className="text-[11px] text-slate-400">No Advisories</div>
               <div className="text-base font-bold text-emerald-400 mt-0.5">
                 {summary.packages_with_no_advisories}
               </div>
-              <div className="text-[10px] text-slate-500">
-                {summary.failed_lookups > 0 ? `${summary.failed_lookups} lookups failed` : '0 errors'}
+              <div className="text-[10px] text-slate-400">confirmed by OSV</div>
+            </div>
+
+            <div className="rounded-lg bg-slate-900/50 p-2.5 border border-slate-800">
+              <div className="text-[11px] text-slate-400">Skipped / Failed</div>
+              <div
+                className={`text-base font-bold mt-0.5 ${
+                  summary.skipped_packages + summary.failed_lookups > 0 ? 'text-amber-400' : 'text-white'
+                }`}
+              >
+                {summary.skipped_packages} / {summary.failed_lookups}
               </div>
+              <div className="text-[10px] text-slate-400">not scanned / lookup errors</div>
             </div>
           </div>
 
@@ -245,6 +256,38 @@ export function OsvAdvisoryCard({ project }: OsvAdvisoryCardProps) {
               {summary.errors.map((err, idx) => (
                 <div key={idx}>• {err}</div>
               ))}
+            </div>
+          )}
+
+          {summary.package_results.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[11px] font-semibold text-slate-300">
+                Per-package results ({summary.package_results.length})
+              </div>
+              <ul className="max-h-64 overflow-y-auto rounded-lg border border-slate-800 divide-y divide-slate-800">
+                {summary.package_results.map((result, idx) => (
+                  <li
+                    key={`${result.package_version_id}:${idx}`}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 px-3 py-2"
+                  >
+                    <span className="font-mono text-[11px] text-sky-300">
+                      {result.name}@{result.version}
+                    </span>
+                    <span className="flex items-center gap-2 text-[11px]">
+                      {(result.reason || result.advisory_ids.length > 0) && (
+                        <span className="text-slate-400">
+                          {result.reason ?? result.advisory_ids.join(', ')}
+                        </span>
+                      )}
+                      <span
+                        className={`rounded border px-1.5 py-0.5 font-semibold ${OUTCOME_BADGES[result.outcome].className}`}
+                      >
+                        {OUTCOME_BADGES[result.outcome].label}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

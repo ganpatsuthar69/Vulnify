@@ -3,14 +3,18 @@
 import io
 import json
 import uuid
+from unittest.mock import patch
+
 import pytest
 from httpx import AsyncClient
 
 from tests.conftest import ADMIN_USER, authenticate_client
+from vulnify.graph.advisory_repository import InMemoryAdvisoryRepository
 from vulnify.graph.job_repository import InMemoryIngestionJobRepository
 from vulnify.graph.project_repository import InMemoryProjectRepository, ProjectRecord
 from vulnify.graph.user_repository import InMemoryUserRepository
-from vulnify.models import IngestionJobRecord, JobStatus, JobType
+from vulnify.models import IngestionJobRecord, JobStatus, JobType, PackageVersion
+from vulnify.osv.client import OsvClient
 
 MINIMAL_VALID_PACKAGE_LOCK = json.dumps({
     "name": "sample-project",
@@ -151,7 +155,10 @@ async def test_osv_sync_and_version_matching_record_jobs(
     osv_job = mock_job_repo.get_job(test_project.id, osv_data["job_id"])
     assert osv_job is not None
     assert osv_job.job_type == JobType.OSV_SYNC
-    assert osv_job.status == JobStatus.SUCCEEDED
+    # The fixture project has no imported packages, so the sync must not be recorded as a success.
+    assert osv_data["status"] == "skipped"
+    assert osv_job.status == JobStatus.FAILED
+    assert osv_job.error_summary
 
     # 2. Trigger Version Matching
     match_res = await client.post(
@@ -307,6 +314,7 @@ async def test_retry_job_workflow(
     client: AsyncClient,
     test_project: ProjectRecord,
     mock_job_repo: InMemoryIngestionJobRepository,
+    mock_advisory_repo: InMemoryAdvisoryRepository,
 ) -> None:
     """Retry logic adheres to eligibility, status constraints, and creates linked jobs."""
     authenticate_client(client)
@@ -369,8 +377,16 @@ async def test_retry_job_workflow(
         created_at=4000,
     )
     mock_job_repo.upsert_job(failed_osv_job)
+    mock_advisory_repo.set_project_packages(
+        test_project.id,
+        [PackageVersion(id="npm:clean-pkg@1.0.0", name="clean-pkg", version="1.0.0", ecosystem="npm", purl="")],
+    )
 
-    res_retry_osv = await client.post(f"/api/projects/{test_project.id}/jobs/{failed_osv_job.id}/retry")
+    async def confirmed_clean(queries, **kwargs):
+        return {q: [] for q in queries}, []
+
+    with patch.object(OsvClient, "query_batch", side_effect=confirmed_clean):
+        res_retry_osv = await client.post(f"/api/projects/{test_project.id}/jobs/{failed_osv_job.id}/retry")
     assert res_retry_osv.status_code == 200
     retry_data = res_retry_osv.json()
     assert retry_data["original_job_id"] == failed_osv_job.id

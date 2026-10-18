@@ -475,6 +475,21 @@ async def import_dependencies(
             detail="Failed to parse lockfile contents.",
         ) from exc
 
+    if not parsed_graph.packages:
+        msg = f"No resolved package versions found in '{filename}'; nothing was imported."
+        if parsed_graph.warnings:
+            msg += " " + " ".join(parsed_graph.warnings[:3])
+        job.status = JobStatus.FAILED
+        job.stage = f"Parse produced no packages: {msg}"
+        job.error_summary = msg
+        job.errors = [msg]
+        job.skipped_items = parsed_graph.skipped_entries
+        job.completed_at = int(datetime.now(timezone.utc).timestamp())
+        job.duration_ms = round((time.time() - t0) * 1000, 2)
+        job.retry_eligible = False
+        job_repo.upsert_job(job)
+        raise HTTPException(status_code=422, detail=msg)
+
     # Check package limit
     if len(parsed_graph.packages) > cap.max_packages:
         msg = f"Parsed package count ({len(parsed_graph.packages)}) exceeds maximum allowed limit of {cap.max_packages}."

@@ -10,6 +10,17 @@ from vulnify.parsers.models import (
 )
 
 
+def _looks_like_package_manifest(data: dict[str, Any]) -> bool:
+    if "lockfileVersion" in data or isinstance(data.get("packages"), dict):
+        return False
+    # Pre-npm-5 shrinkwraps lack lockfileVersion but still map names to resolved records (dicts).
+    for key in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
+        section = data.get(key)
+        if isinstance(section, dict) and section and not any(isinstance(v, dict) for v in section.values()):
+            return True
+    return False
+
+
 def parse_npm_lockfile(content: str | bytes, filename: str = "package-lock.json") -> ParsedGraph:
     """Parse an npm package-lock.json file without code execution.
     
@@ -34,6 +45,12 @@ def parse_npm_lockfile(content: str | bytes, filename: str = "package-lock.json"
 
     if not isinstance(data, dict):
         raise LockfileParseError("Invalid lockfile format: root must be a JSON object.")
+
+    if _looks_like_package_manifest(data):
+        raise LockfileParseError(
+            f"'{filename}' is not an npm lockfile: it has no 'lockfileVersion' and lists version ranges "
+            "instead of resolved versions (package.json manifest). Upload package-lock.json or npm-shrinkwrap.json."
+        )
 
     unique_packages: dict[str, ParsedPackageVersion] = {}
     edges: set[tuple[str, str]] = set()
@@ -148,6 +165,7 @@ def parse_npm_lockfile(content: str | bytes, filename: str = "package-lock.json"
             for pkg_name, dep_info in tree.items():
                 if not isinstance(dep_info, dict):
                     skipped_entries += 1
+                    warnings.append(f"Skipping v1 dependency '{pkg_name}': entry is not a resolved lockfile record.")
                     continue
 
                 version_val = dep_info.get("version")

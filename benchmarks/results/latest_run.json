@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0.0",
-  "run_id": "run-20261018_135424",
+  "run_id": "run-20261018_145921",
   "dataset_version": "1.0.0",
   "corpus_id": "corpus-ecommerce-v1",
-  "started_at": "2026-10-18T13:54:24.959291+00:00",
-  "completed_at": "2026-10-18T13:56:14.293147+00:00",
+  "started_at": "2026-10-18T14:59:21.234003+00:00",
+  "completed_at": "2026-10-18T15:01:03.551260+00:00",
   "protocol": {
     "protocol_version": "1.0.0",
     "graph_system_name": "vulnify-graph-agent",
@@ -22,43 +22,43 @@
     "rag_success_count": 20,
     "graph_error_count": 0,
     "rag_error_count": 0,
-    "graph_avg_duration_ms": 3227.17,
-    "rag_avg_duration_ms": 2238.7,
+    "graph_avg_duration_ms": 3104.7,
+    "rag_avg_duration_ms": 2010.63,
     "by_category": {
       "exposure": {
         "total_cases": 4,
         "graph_success_count": 4,
         "rag_success_count": 4,
-        "graph_avg_duration_ms": 2928.16,
-        "rag_avg_duration_ms": 1827.33
+        "graph_avg_duration_ms": 3514.65,
+        "rag_avg_duration_ms": 2107.03
       },
       "no_path": {
         "total_cases": 4,
         "graph_success_count": 4,
         "rag_success_count": 4,
-        "graph_avg_duration_ms": 3082.86,
-        "rag_avg_duration_ms": 1567.01
+        "graph_avg_duration_ms": 2580.2,
+        "rag_avg_duration_ms": 1762.27
       },
       "path_exists": {
         "total_cases": 4,
         "graph_success_count": 4,
         "rag_success_count": 4,
-        "graph_avg_duration_ms": 2528.52,
-        "rag_avg_duration_ms": 3319.8
+        "graph_avg_duration_ms": 2262.88,
+        "rag_avg_duration_ms": 1784.01
       },
       "ranking": {
         "total_cases": 4,
         "graph_success_count": 4,
         "rag_success_count": 4,
-        "graph_avg_duration_ms": 4320.05,
-        "rag_avg_duration_ms": 2312.47
+        "graph_avg_duration_ms": 4003.41,
+        "rag_avg_duration_ms": 2513.72
       },
       "remediation": {
         "total_cases": 4,
         "graph_success_count": 4,
         "rag_success_count": 4,
-        "graph_avg_duration_ms": 3276.26,
-        "rag_avg_duration_ms": 2166.9
+        "graph_avg_duration_ms": 3162.35,
+        "rag_avg_duration_ms": 1886.13
       }
     }
   },
@@ -86,14 +86,14 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 2617.15,
+        "duration_ms": 2272.75,
         "tokens_used": 481,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, the authentication-service has a direct dependency on jsonwebtoken@8.5.1, which is vulnerable to algorithm confusion attacks (OSV-EXAMPLE-JWT-001). The vulnerability is classified as CRITICAL and affects all versions prior to 9.0.0. Therefore, there is a confirmed dependency path to the vulnerable version of jsonwebtoken.",
+        "answer": "Based on the retrieved context, the authentication-service has a direct dependency on jsonwebtoken@8.5.1, which is vulnerable to algorithm confusion attacks (OSV-EXAMPLE-JWT-001). The vulnerability is classified as CRITICAL and affects all versions prior to 9.0.0. The fixed version is 9.0.0. Therefore, there is a confirmed dependency path to the vulnerable version of jsonwebtoken.",
         "evidence_references": [
           "DOC-SVC-AUTH",
           "DOC-ADV-JWT-001",
@@ -133,8 +133,8 @@
             }
           ]
         },
-        "duration_ms": 1688.12,
-        "tokens_used": 1406,
+        "duration_ms": 1954.91,
+        "tokens_used": 1417,
         "error_message": null
       }
     },
@@ -147,7 +147,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "The shortest reachability path from order-service to find-my-way@3.0.0 is a 2-hop path, as evidenced by the bounded graph path:\n\n- Depth 2: order-service -> fastify@3.29.0 -> find-my-way@3.0.0\n\nThis path is proven by the lockfile (order-service package-lock.json Tree). The finding is classified as High priority due to the advisory severity being High, the transitive dependency reachability, and the availability of an actionable remediation target (fixed in >= 3.0.5).\n\nIt is important to note that the absence of a path does not guarantee absolute safety, as there may be other paths or attack vectors not captured in the graph evidence. Additionally, the presence of a path does not guarantee runtime exploitability, as it depends on various factors such as the specific configuration and usage of the vulnerable package.",
+        "answer": "The shortest reachability path from order-service to find-my-way@3.0.0 is a 2-hop path: order-service -> fastify@3.29.0 -> find-my-way@3.0.0. This path is classified as High priority due to the advisory severity being High, the transitive dependency reachability, and the availability of an actionable remediation target (fixed in >= 3.0.5). It is important to note that the absence of a path does not guarantee absolute safety, as there may be other paths or vulnerabilities not captured in the current graph evidence.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -161,8 +161,8 @@
           "target_finding_id": "find-b6e148f0ceb5",
           "priority_band": "High"
         },
-        "duration_ms": 2648.36,
-        "tokens_used": 518,
+        "duration_ms": 1884.17,
+        "tokens_used": 457,
         "error_message": null
       },
       "rag_result": {
@@ -208,7 +208,7 @@
             }
           ]
         },
-        "duration_ms": 1793.25,
+        "duration_ms": 1280.38,
         "tokens_used": 1317,
         "error_message": null
       }
@@ -236,14 +236,14 @@
           "target_finding_id": "find-6004d9f0a30f",
           "priority_band": "High"
         },
-        "duration_ms": 2292.66,
+        "duration_ms": 2588.31,
         "tokens_used": 551,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, the path from `checkout-service` to the vulnerable `lodash@4.17.15` is as follows:\n\n1. `checkout-service` depends on `auth-client@1.2.0`.\n2. `auth-client@1.2.0` depends on `token-verifier@2.1.0`.\n3. `token-verifier@2.1.0` depends on `lodash@4.17.15`.\n\nThis path consists of 3 hops, traversing the intermediate packages `auth-client` and `token-verifier`.",
+        "answer": "Based on the retrieved context, there is a path from the checkout-service to the vulnerable lodash@4.17.15. The path consists of 2 hops:\n\n1. checkout-service \u2192 auth-client\n2. auth-client \u2192 token-verifier\n\nThe intermediate package traversed is auth-client.",
         "evidence_references": [
           "DOC-SVC-CHECKOUT",
           "DOC-ADV-LODASH-001",
@@ -283,8 +283,8 @@
             }
           ]
         },
-        "duration_ms": 6693.72,
-        "tokens_used": 1381,
+        "duration_ms": 1694.73,
+        "tokens_used": 1320,
         "error_message": null
       }
     },
@@ -297,7 +297,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the provided graph evidence, there is no direct or indirect path from the web-frontend to the vulnerable redis-parser@3.0.0 across service boundaries in the project proj-ecommerce-core.\n\nThe only bounded graph path found is from the authentication-service to the vulnerable jsonwebtoken@8.5.1, with a depth of 1 hop and a Highest priority band. This indicates that the vulnerability in jsonwebtoken@8.5.1 is directly reachable from the authentication-service, but not from the web-frontend.\n\nIt is important to note that the absence of a path does not guarantee absolute safety, as there may be other, less obvious paths or indirect dependencies that could expose the system to the vulnerability. Additionally, the presence of a path does not necessarily mean that the vulnerability can be exploited at runtime, as it depends on various factors such as the specific configuration and usage of the vulnerable package.",
+        "answer": "Based on the provided graph evidence, there is no direct or indirect path from the web-frontend to the vulnerable redis-parser@3.0.0 across service boundaries in the project proj-ecommerce-core.\n\nThe only bounded graph path found is from the authentication-service to the vulnerable jsonwebtoken@8.5.1, with a depth of 1 hop and a Highest priority band. This indicates that the vulnerability in jsonwebtoken@8.5.1 is directly reachable from the authentication-service but not from the web-frontend.\n\nIt is important to note that the absence of a path does not guarantee absolute safety, as there may be other indirect or less obvious paths that are not captured in the graph evidence. Additionally, the presence of a path does not necessarily mean that the vulnerability is exploitable at runtime, as it depends on various factors such as the specific usage of the vulnerable package and the overall security posture of the system.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -311,14 +311,14 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 2555.91,
-        "tokens_used": 498,
+        "duration_ms": 2306.28,
+        "tokens_used": 501,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, there is no evidence that the web-frontend service directly or indirectly reaches the vulnerable redis-parser@3.0.0 across service boundaries. The web-frontend service only calls the cart-service, and the cart-service uses redis-parser@3.0.0, which is vulnerable. However, the context does not show any direct or indirect communication between the web-frontend and the cart-service that would expose it to the vulnerability. Therefore, the evidence is insufficient to conclude that the web-frontend service is exposed to the vulnerable redis-parser@3.0.0.",
+        "answer": "Based on the retrieved context, there is no evidence that the web-frontend service directly or indirectly reaches the vulnerable redis-parser@3.0.0 across service boundaries. The web-frontend service only calls the cart-service, which uses redis-parser@3.0.0, but there is no indication of a direct or indirect path from web-frontend to the vulnerable redis-parser@3.0.0.",
         "evidence_references": [
           "DOC-SVC-WEB-FRONTEND",
           "DOC-ADV-REDIS-001",
@@ -358,8 +358,8 @@
             }
           ]
         },
-        "duration_ms": 3104.11,
-        "tokens_used": 1225,
+        "duration_ms": 2206.02,
+        "tokens_used": 1188,
         "error_message": null
       }
     },
@@ -372,7 +372,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the graph evidence provided, there are no directed paths found between the payment-processor service and the vulnerable pyyaml@5.3.1 package within the depth limit of 1 to 8 hops. The disjoint graph boundary is confirmed, meaning no directed edges exist between the service and the package.\n\nThe finding for pyyaml@5.3.1 has a priority band of Medium, with the primary reason being the unknown reachability of the dependency path due to the service topology traversal being pending or unavailable. The advisory severity is Critical, but the absence of a path does not guarantee absolute safety, as there may be undiscovered or indirect paths beyond the current depth limit.\n\nTherefore, the answer to the question \"Can payment-processor reach vulnerable pyyaml@5.3.1?\" is **No**, based on the current graph evidence. However, it is essential to acknowledge that the absence of a path does not guarantee absolute safety, and further analysis may be required to ensure the complete security of the system.",
+        "answer": "Based on the graph evidence provided, there are no directed paths found between the payment-processor service and the vulnerable pyyaml@5.3.1 package within the depth limit of 1 to 8 hops. The disjoint graph boundary is confirmed, meaning no directed edges exist between the service and the package.\n\nThe finding for pyyaml@5.3.1 has a priority band of Medium, with the primary reason being the unknown dependency path reachability due to the service topology traversal being pending or unavailable. The advisory severity is Critical, but the absence of a path does not guarantee absolute safety, as there may be undiscovered or indirect paths beyond the current depth limit.\n\nTherefore, the payment-processor service does not currently have a direct or indirect exposure to the vulnerable pyyaml@5.3.1 package based on the provided graph evidence. However, it is important to note that the absence of a path does not guarantee absolute safety, and further analysis may be required to ensure the complete security of the system.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -385,14 +385,14 @@
           "target_finding_id": "find-201e997fe9c4",
           "priority_band": "Medium"
         },
-        "duration_ms": 3317.37,
-        "tokens_used": 517,
+        "duration_ms": 2609.85,
+        "tokens_used": 516,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, there is no evidence that the payment-processor service directly depends on or includes the vulnerable version of pyyaml (5.3.1). The payment-processor's package.json manifest only lists dependencies on stripe and paypal-rest-sdk, neither of which are pyyaml. Therefore, there is no direct path for the payment-processor to reach the vulnerable pyyaml version.",
+        "answer": "Based on the retrieved context, there is no evidence that the payment-processor package directly depends on or includes the vulnerable version of pyyaml (5.3.1). The payment-processor's package.json manifest only lists dependencies on stripe and paypal-rest-sdk, neither of which are related to pyyaml. Therefore, there is no direct path for the payment-processor to reach the vulnerable pyyaml version.",
         "evidence_references": [
           "DOC-SVC-PAYMENT",
           "DOC-ADV-PYYAML-001",
@@ -432,8 +432,8 @@
             }
           ]
         },
-        "duration_ms": 1411.87,
-        "tokens_used": 1113,
+        "duration_ms": 1780.53,
+        "tokens_used": 1115,
         "error_message": null
       }
     },
@@ -446,7 +446,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the graph evidence provided, the vulnerable version of uritools@3.0.0 is not reached by the notification-service in the active project graph. The bounded graph traversal found 0 paths within the depth limit of 1 to 8, and the disjoint graph boundary was confirmed, meaning no directed edges exist between the service and the package.\n\nThe priority band for this finding is Medium, as the advisory severity is Moderate/Medium, and the dependency path reachability is unknown due to the service topology traversal being pending or unavailable. It is not assumed safe.\n\nIt is important to note that the absence of a path does not guarantee absolute safety, as there may be undiscovered or unrecorded paths in the graph. Additionally, the absence of a path does not imply that the vulnerability cannot be exploited, as other means of exploitation may exist.",
+        "answer": "Based on the graph evidence provided, the vulnerable version of uritools@3.0.0 is not reached by the notification-service in the active project graph. The bounded graph traversal found 0 paths within the depth limit of 1 to 8 hops, and the disjoint graph boundary was confirmed, meaning no directed edges exist between the service and the package.\n\nThe priority band for this finding is Medium, as the advisory severity is Moderate/Medium, and the dependency path reachability is unknown due to the service topology traversal being pending or unavailable. It is not assumed safe. However, an actionable remediation target is available in version 3.0.2.\n\nIt is important to note that the absence of a path within the given depth limit does not guarantee absolute safety, as there may be other paths or dependencies not captured in the current graph traversal. Additionally, the graph evidence does not indicate runtime exploitability, only exposure.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -459,8 +459,8 @@
           "target_finding_id": "find-1f34c2d4db25",
           "priority_band": "Medium"
         },
-        "duration_ms": 2741.39,
-        "tokens_used": 496,
+        "duration_ms": 3314.73,
+        "tokens_used": 514,
         "error_message": null
       },
       "rag_result": {
@@ -506,7 +506,7 @@
             }
           ]
         },
-        "duration_ms": 1776.5,
+        "duration_ms": 2079.61,
         "tokens_used": 1330,
         "error_message": null
       }
@@ -520,7 +520,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the provided graph evidence, the devDependencies-only jest@26.6.3 does not expose the production api-service runtime. The only bounded graph path found is to the jsonwebtoken@8.5.1 package, which is a direct dependency of the authentication-service with a critical advisory (OSV-EXAMPLE-JWT-001). This path has a depth of 1 hop and is classified as Highest priority according to the policy v1.0.0.\n\nIt is important to note that the absence of a path from jest@26.6.3 to the api-service does not guarantee absolute safety. There may be other paths or indirect dependencies that could potentially expose the api-service runtime. Additionally, the presence of a critical advisory on jsonwebtoken@8.5.1 indicates a significant security risk, but it does not imply that the api-service runtime is directly exploitable.",
+        "answer": "Based on the provided graph evidence, the devDependencies-only jest@26.6.3 does not expose the production api-service runtime. The only finding identified is for jsonwebtoken@8.5.1 in the authentication-service, which is a direct dependency (depth 1 hop) and has a critical severity advisory. This finding does not indicate any exposure to the api-service runtime.\n\nIt is important to note that the absence of a path from jest@26.6.3 to the api-service runtime does not guarantee absolute safety, as there may be other paths or dependencies not captured in the graph evidence. Additionally, the presence of a finding does not necessarily mean that the vulnerability is exploitable at runtime.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -534,8 +534,8 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 2900.97,
-        "tokens_used": 499,
+        "duration_ms": 1898.04,
+        "tokens_used": 457,
         "error_message": null
       },
       "rag_result": {
@@ -581,7 +581,7 @@
             }
           ]
         },
-        "duration_ms": 1409.98,
+        "duration_ms": 1515.48,
         "tokens_used": 1218,
         "error_message": null
       }
@@ -595,7 +595,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the graph evidence provided, the background batch-exporter does not have a direct or indirect path to the vulnerable express@4.16.0 HTTP routes in the proj-ecommerce-core project. The only path found is to the jsonwebtoken@8.5.1 package in the authentication-service, which is a separate service and not related to the express@4.16.0 HTTP routes.\n\nThe absence of a path does not guarantee absolute safety, as there may be other paths or indirect dependencies that are not captured in the graph evidence. Additionally, the presence of a path does not necessarily mean that an exploit is possible or that the vulnerability is actively being exploited. The priority band for the jsonwebtoken@8.5.1 package is Highest, but this does not indicate the risk to the express@4.16.0 HTTP routes.\n\nIn conclusion, the background batch-exporter cannot trigger or reach the vulnerable express@4.16.0 HTTP routes based on the graph evidence provided. However, it is important to note that the absence of a path does not guarantee absolute safety, and further analysis may be required to ensure the security of the project.",
+        "answer": "Based on the provided graph evidence, the background batch-exporter does not have a direct or indirect path to the vulnerable express@4.16.0 HTTP routes in the proj-ecommerce-core project. The only path found is to the jsonwebtoken@8.5.1 package in the authentication-service, which is a separate service and not directly reachable from the background batch-exporter.\n\nThe priority band for the jsonwebtoken@8.5.1 vulnerability is Highest, with a path depth of 1 hop. However, this does not indicate a risk to the express@4.16.0 HTTP routes or the background batch-exporter.\n\nIt is important to note that the absence of a path does not guarantee absolute safety, as there may be other, undiscovered paths or indirect means of exploitation. The graph evidence provided is limited to the information available, and further analysis may be required to fully assess the security of the system.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -609,14 +609,14 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 3371.69,
-        "tokens_used": 554,
+        "duration_ms": 2498.19,
+        "tokens_used": 506,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, there is no direct evidence that the background batch-exporter can trigger or reach vulnerable express@4.16.0 HTTP routes in the proj-ecommerce-core project. The context does not provide any information about the batch-exporter's dependencies or its interaction with other services, including the authentication-service that uses express@4.17.1. Therefore, the evidence is insufficient to conclude that a path exists.",
+        "answer": "Based on the retrieved context, there is no direct evidence that the background batch-exporter can trigger or reach vulnerable express@4.16.0 HTTP routes in the proj-ecommerce-core project. The context does not provide any information about the batch-exporter's dependencies or its interaction with other services, including the authentication-service which uses express@4.17.1. Therefore, the evidence is insufficient to conclude that a path exists.",
         "evidence_references": [
           "DOC-SVC-BATCH-EXPORTER",
           "DOC-POLICY-SCORING",
@@ -656,7 +656,7 @@
             }
           ]
         },
-        "duration_ms": 1669.7,
+        "duration_ms": 1673.46,
         "tokens_used": 1325,
         "error_message": null
       }
@@ -670,7 +670,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the graph evidence provided, the vulnerable node `node-forge@0.10.0` is not directly exposed to internet ingress in the context of the `proj-ecommerce-core` project. The evidence shows a different finding related to `jsonwebtoken@8.5.1` in the `authentication-service` with a critical advisory (OSV-EXAMPLE-JWT-001), which is directly reachable from the service (path depth: 1 hop). This indicates a potential vulnerability in the authentication service, but it does not provide any information about the exposure of `node-forge@0.10.0`.\n\nThe absence of a path to `node-forge@0.10.0` in the graph evidence suggests that it is not directly exposed to internet ingress. However, it is important to note that the absence of a path does not guarantee absolute safety, as there may be other paths or indirect exposures that are not captured in the graph evidence.\n\nIn summary, based on the provided graph evidence, `node-forge@0.10.0` is not architecturally exposed to internet ingress in the `proj-ecommerce-core` project. The evidence does not indicate any direct paths from internet ingress to this vulnerable node.",
+        "answer": "Based on the provided graph evidence, the vulnerable node-forge@0.10.0 is not directly exposed to internet ingress in the context of the proj-ecommerce-core project. The evidence shows a critical vulnerability in jsonwebtoken@8.5.1, which is a direct dependency of the authentication-service with a path depth of 1 hop. This vulnerability is classified as Highest priority due to its critical severity, direct dependency reachability, and available remediation target.\n\nHowever, the absence of a path to the vulnerable node-forge@0.10.0 does not guarantee absolute safety. There may be other paths or dependencies not captured in the current graph evidence that could expose the vulnerable node-forge@0.10.0 to internet ingress. It is essential to continue monitoring and analyzing the project's dependency graph for any potential vulnerabilities or exposure paths.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -684,14 +684,14 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 2349.49,
-        "tokens_used": 572,
+        "duration_ms": 3638.74,
+        "tokens_used": 489,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, node-forge@0.10.0 is architecturally exposed to internet ingress through the public-api service, which has internet-facing ingress endpoints. The context does not provide information about the runtime exploitability of this vulnerability.",
+        "answer": "Based on the retrieved context, node-forge@0.10.0 is architecturally exposed to internet ingress through the public-api service, which has internet-facing ingress endpoints. The context does not provide information about runtime exploitability or additional paths of exposure.",
         "evidence_references": [
           "DOC-ADV-FORGE-001",
           "DOC-SVC-PUBLIC-API",
@@ -731,8 +731,8 @@
             }
           ]
         },
-        "duration_ms": 1348.92,
-        "tokens_used": 1232,
+        "duration_ms": 2765.16,
+        "tokens_used": 1233,
         "error_message": null
       }
     },
@@ -745,7 +745,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "The network exposure boundary for xml2js@0.4.23 reached by offline-batch-job in project proj-ecommerce-core is not directly provided in the graph evidence. However, we can infer the exposure based on the given information.\n\nThe graph evidence shows a path from the service authentication-service to the package jsonwebtoken@8.5.1, which has a critical advisory. This indicates that the authentication-service is directly dependent on jsonwebtoken@8.5.1, but it does not provide any information about the offline-batch-job or its dependencies.\n\nTo determine the network exposure boundary for xml2js@0.4.23 reached by offline-batch-job, we would need to analyze the dependencies of the offline-batch-job and see if there is a path from the offline-batch-job to xml2js@0.4.23. If such a path exists, then the network exposure boundary would be determined by the services or components that are reachable from the offline-batch-job.\n\nIt is important to note that the absence of a path in the graph evidence does not guarantee absolute safety, as there may be other paths or dependencies that are not captured in the graph. Additionally, the presence of a path does not necessarily mean that the vulnerability is exploitable at runtime, as it depends on various factors such as the specific configuration and usage of the software.",
+        "answer": "The network exposure boundary for xml2js@0.4.23 reached by offline-batch-job in project proj-ecommerce-core is not directly provided in the graph evidence. However, we can infer the exposure based on the given information.\n\nThe graph evidence shows a path from the service authentication-service to the package jsonwebtoken@8.5.1, which has a critical advisory. This indicates that the authentication-service is directly dependent on jsonwebtoken@8.5.1, and there is a potential exposure boundary here. However, this does not directly relate to the xml2js@0.4.23 package or the offline-batch-job service.\n\nIt is important to note that the absence of a path does not guarantee absolute safety, as there may be other indirect paths or dependencies that are not captured in the graph evidence. Additionally, the presence of a path does not necessarily mean that an exploit is possible at runtime, as it depends on various factors such as the specific configuration and usage of the packages and services.\n\nIn conclusion, based on the provided graph evidence, we cannot definitively determine the network exposure boundary for xml2js@0.4.23 reached by offline-batch-job in project proj-ecommerce-core. Further analysis and investigation are required to accurately assess the exposure.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -759,14 +759,14 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 2843.62,
-        "tokens_used": 606,
+        "duration_ms": 2948.9,
+        "tokens_used": 585,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, the network exposure boundary for xml2js@0.4.23 reached by offline-batch-job is as follows:\n\n- **Internet Facing**: false\n- **Ingress Type**: internal-only\n- **Access Control**: vpc-private-subnet-only\n\nThis indicates that offline-batch-job is not directly exposed to the internet and is only accessible within a private subnet of the VPC.",
+        "answer": "Based on the retrieved context, the network exposure boundary for xml2js@0.4.23 reached by offline-batch-job is as follows:\n\n- **Internet Facing**: False\n- **Ingress Type**: Internal-only\n- **Access Control**: VPC private subnet-only\n\nThis indicates that offline-batch-job is not directly exposed to the internet and is only accessible within the VPC private subnet.",
         "evidence_references": [
           "DOC-SVC-OFFLINE-JOB",
           "DOC-ADV-NOFIX-001",
@@ -806,8 +806,8 @@
             }
           ]
         },
-        "duration_ms": 1683.73,
-        "tokens_used": 1185,
+        "duration_ms": 1418.67,
+        "tokens_used": 1181,
         "error_message": null
       }
     },
@@ -820,7 +820,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Vulnify evaluates the exposure of legacy-importer in the absence of its internet-facing ingress signal by analyzing the graph evidence provided. The graph evidence shows that the finding with ID find-59107925c9d1, related to the package jsonwebtoken@8.5.1 in the service authentication-service, has a priority band of Highest (Policy v1.0.0). This is due to the advisory severity being Critical, the direct dependency being reachable from the service (path depth: 1 hop), and an actionable remediation target being available (fixed in >= 9.0.0).\n\nThe bounded graph path found is:\n- Depth 1: Service: authentication-service \u2192 jsonwebtoken@8.5.1\n\nSince legacy-importer does not have an internet-facing ingress signal, it is not directly exposed to the internet. However, the exposure of legacy-importer could be indirectly influenced by the exposure of other services, such as authentication-service, which is directly exposed to the internet. The presence of a critical vulnerability in authentication-service, which is reachable in one hop, indicates a potential risk to the overall system's security.\n\nIt is important to note that the absence of a path does not guarantee absolute safety, as there may be other paths or indirect exposures that are not captured in the current graph evidence. Additionally, the evaluation is based on the current state of the graph and may change if new information or paths are discovered.",
+        "answer": "Vulnify evaluates the exposure of legacy-importer in proj-ecommerce-core by analyzing the graph evidence provided. The absence of an internet-facing ingress signal for legacy-importer does not necessarily mean it is not exposed to potential threats. However, based on the graph evidence, we can infer the following:\n\n1. **Exposure Evaluation**: The graph evidence shows a path from the internet-facing service `authentication-service` to the vulnerable package `jsonwebtoken@8.5.1` with a depth of 1 hop. This indicates that the vulnerability in `jsonwebtoken@8.5.1` could potentially be exploited if there is a way to reach the `authentication-service` from the internet, even if the `legacy-importer` itself does not have an internet-facing ingress.\n\n2. **Priority Band**: The priority band for this finding is \"Highest\" (Policy v1.0.0), which is based on the severity of the advisory (CRITICAL), the direct dependency reachable from the service (1 hop), and the availability of a fixed version (>= 9.0.0).\n\n3. **Non-Exploitability Caveats**: It is important to note that the absence of a direct path to `legacy-importer` does not guarantee absolute safety. There could be other paths or indirect dependencies that have not been identified in the graph evidence. Additionally, the actual exploitability of the vulnerability depends on various factors, including the specific configuration and implementation details of the services and packages involved.\n\nIn summary, while the absence of an internet-facing ingress signal for `legacy-importer` suggests it may not be directly exposed to the internet, the presence of a vulnerable package in a reachable service (`authentication-service`) indicates a potential exposure that needs to be addressed. The priority band is \"Highest\" due to the critical severity and direct dependency reachable from the service. However, the absence of a direct path to `legacy-importer` does not guarantee absolute safety, and further analysis may be required to ensure comprehensive security.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -834,14 +834,14 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 3516.51,
-        "tokens_used": 617,
+        "duration_ms": 4299.55,
+        "tokens_used": 734,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, the exposure of the legacy-importer service is evaluated as follows:\n\n- The legacy-importer manifest indicates that the internet-facing ingress signal is missing (status: \"missing_telemetry\").\n- The Vulnify Priority Scoring Policy (Rule 3) states that missing signals are evaluated with caution as Medium, never Low or zero risk.\n- There is no evidence of a confirmed graph path (Rule 3, Graph Path Status: unanalyzed).\n\nTherefore, the exposure of the legacy-importer service is evaluated as Medium due to the missing internet-facing ingress signal and unanalyzed graph path status.",
+        "answer": "Based on the retrieved context, the exposure of the legacy-importer service is evaluated as follows:\n\n1. The legacy-importer manifest indicates that the internet-facing ingress signal is missing (`\"internet_facing\": null`). This lack of signal suggests that the service's exposure to the internet is unconfirmed or unknown.\n\n2. The Vulnify Priority Scoring Policy (Rule 3) states that missing signals are evaluated with caution as Medium, never Low or zero risk. This implies that the absence of the internet-facing ingress signal does not reduce the risk to zero, but rather increases the uncertainty and potential risk.\n\n3. The context does not provide any information about the graph path status (confirmed reachability) or the availability of a fixed version for any vulnerabilities in the legacy-importer service. Therefore, the exposure evaluation is based solely on the missing ingress signal.\n\nIn conclusion, the exposure of the legacy-importer service is evaluated as Medium due to the missing internet-facing ingress signal, as per the Vulnify Priority Scoring Policy. The evidence is insufficient to confirm or deny the service's exposure to the internet.",
         "evidence_references": [
           "DOC-SVC-LEGACY-IMPORTER",
           "DOC-ADV-NOFIX-001",
@@ -881,8 +881,8 @@
             }
           ]
         },
-        "duration_ms": 2876.03,
-        "tokens_used": 1442,
+        "duration_ms": 2705.63,
+        "tokens_used": 1541,
         "error_message": null
       }
     },
@@ -895,7 +895,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the provided graph evidence, there is no direct or indirect path from the `gateway-service` to the `bcryptjs@2.4.3` package. The only path found is from the `authentication-service` to the `jsonwebtoken@8.5.1` package, which is a different package and service.\n\nTherefore, the answer to the question is: **No, synthetic edges are not present in the reachability path from the `gateway-service` to the `bcryptjs@2.4.3` package in the `proj-ecommerce-core` project.**\n\n**Caveats:**\n1. The absence of a path does not guarantee absolute safety, as there may be other paths or dependencies not captured in the current graph evidence.\n2. The graph evidence provided is based on the `get_project_finding_paths` and `rank_project_findings` Cypher queries, and the findings are ranked according to the `Policy v1.0.0` priority band. The priority reasons are based on the advisory severity, path depth, and availability of a fixed version.\n3. The graph evidence does not claim runtime exploitability, but rather provides information on the potential exposure based on the reachability paths and the priority bands.",
+        "answer": "Based on the provided graph evidence, there is no direct or indirect path from the `gateway-service` to the `bcryptjs@2.4.3` package. The only path found is from the `authentication-service` to the `jsonwebtoken@8.5.1` package, which is a different package and service.\n\nThe absence of a path from the `gateway-service` to the `bcryptjs@2.4.3` package does not guarantee absolute safety, as there may be other paths or dependencies not captured in the current graph evidence. Additionally, the presence of synthetic edges or other indirect paths cannot be confirmed or denied based solely on the provided information.\n\nIt is important to note that the absence of a path does not imply that the `bcryptjs@2.4.3` package is not exposed to potential risks. Further analysis and investigation are required to fully assess the security posture of the `bcryptjs@2.4.3` package and its dependencies.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -909,8 +909,8 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 3003.03,
-        "tokens_used": 573,
+        "duration_ms": 3171.42,
+        "tokens_used": 522,
         "error_message": null
       },
       "rag_result": {
@@ -956,7 +956,7 @@
             }
           ]
         },
-        "duration_ms": 1400.62,
+        "duration_ms": 1538.68,
         "tokens_used": 1469,
         "error_message": null
       }
@@ -970,7 +970,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "The finding `find-crit-001` (OSV-EXAMPLE-CRIT-001) is assigned to the Highest priority band because:\n\n1. The advisory severity for the vulnerable package `jsonwebtoken@8.5.1` is Critical.\n2. The vulnerable package is a direct dependency of the service `authentication-service`, with a path depth of 1 hop.\n3. An actionable remediation target is available, as the package can be fixed by upgrading to version 9.0.0 or higher.\n\nThe bounded graph path found is:\n- Depth 1: Service: authentication-service \u2192 jsonwebtoken@8.5.1\n\nIt is important to note that the absence of a path does not guarantee absolute safety, as there may be other paths or indirect dependencies that could expose the project to the vulnerability. Additionally, the priority band assignment is based on the evidence available in the graph and the policy used for ranking, and does not claim runtime exploitability.",
+        "answer": "The finding `find-crit-001` (OSV-EXAMPLE-CRIT-001) is assigned to the Highest priority band because:\n\n1. The advisory severity is Critical.\n2. The direct dependency `jsonwebtoken@8.5.1` is reachable from the service `authentication-service` with a path depth of 1 hop.\n3. An actionable remediation target is available, as the fixed version `9.0.0` is available.\n\nThe bounded graph path found is:\n- Depth 1: Service: `authentication-service` \u2192 `jsonwebtoken@8.5.1`\n\nIt is important to note that the absence of a path does not guarantee absolute safety, and the presence of a path does not guarantee runtime exploitability. The priority band is determined based on the evidence available in the graph traversal.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -984,14 +984,14 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 8192.81,
-        "tokens_used": 640,
+        "duration_ms": 2290.51,
+        "tokens_used": 615,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "The finding find-crit-001 (OSV-EXAMPLE-CRIT-001) is assigned to the Highest priority band because it meets all the criteria specified in Rule 1 of the Vulnify Priority Scoring Policy Specification v1.0.0:\n\n1. Advisory Severity: CRITICAL\n2. Version Match Status: affected\n3. Graph Path Status: path_found (confirmed reachability)\n4. Fixed Version: Available\n\nThe advisory OSV-EXAMPLE-JWT-001 has a severity of CRITICAL, the package.json manifest shows that the affected version of jsonwebtoken (8.5.1) is used in the project, and there is a confirmed path to the vulnerable package. Additionally, a fixed version (9.0.0) is available.",
+        "answer": "The finding find-crit-001 (OSV-EXAMPLE-CRIT-001) is assigned to the Highest priority band because it meets the criteria for Rule 1 of the Vulnify Priority Scoring Policy Specification v1.0.0:\n\n1. Advisory Severity: CRITICAL\n2. Version Match Status: affected\n3. Graph Path Status: path_found (confirmed reachability)\n4. Fixed Version: Available\n\nThe advisory OSV-EXAMPLE-JWT-001 indicates that the package jsonwebtoken is affected and a fixed version is available. The context does not provide information about the graph path status, but based on the policy, the finding is assigned to the Highest priority band.",
         "evidence_references": [
           "DOC-POLICY-SCORING",
           "DOC-SVC-API-DEVDEPS",
@@ -1031,8 +1031,8 @@
             }
           ]
         },
-        "duration_ms": 3259.52,
-        "tokens_used": 1523,
+        "duration_ms": 3811.03,
+        "tokens_used": 1506,
         "error_message": null
       }
     },
@@ -1045,7 +1045,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the graph evidence provided, a High-severity finding is assigned to the **Highest** priority band when no path is found. This is because the priority band is determined by the policy (Policy v1.0.0) and not by the absence of a path. The policy assigns the Highest priority band to findings with Critical severity advisories that have a direct dependency reachable from the service (path depth: 1 hop) and an actionable remediation target available.\n\nIt is important to note that the absence of a path does not guarantee absolute safety. There may be other paths or vulnerabilities that are not captured in the graph traversal evidence. Additionally, the priority band assigned by the policy does not indicate runtime exploitability. It only indicates the potential risk and the priority for remediation based on the evidence available.",
+        "answer": "Based on the graph evidence provided, a High-severity finding is assigned to the **Highest** priority band when no path is found. This is because the priority band is determined by the policy and the evidence of paths found. In this case, the policy assigns a Highest priority band to findings with a Critical severity advisory, a direct dependency reachable from the service (path depth: 1 hop), and an actionable remediation target available.\n\nHowever, it is important to note that the absence of a path does not guarantee absolute safety. There may be other paths or vulnerabilities that are not captured in the graph traversal evidence. Additionally, the priority band is not an indication of runtime exploitability, but rather an indication of the potential exposure based on the evidence found.\n\nIn summary, a High-severity finding is assigned to the **Highest** priority band when no path is found, based on the policy and the evidence of paths found. However, the absence of a path does not guarantee absolute safety, and the priority band does not indicate runtime exploitability.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -1059,8 +1059,8 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 2270.9,
-        "tokens_used": 592,
+        "duration_ms": 6917.03,
+        "tokens_used": 640,
         "error_message": null
       },
       "rag_result": {
@@ -1106,7 +1106,7 @@
             }
           ]
         },
-        "duration_ms": 1174.65,
+        "duration_ms": 2580.69,
         "tokens_used": 1334,
         "error_message": null
       }
@@ -1120,7 +1120,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "The scoring engine prioritizes the finding with ID `find-59107925c9d1` in the `Highest` priority band due to the following reasons:\n\n1. **Advisory Severity**: The advisory `OSV-EXAMPLE-JWT-001` has a severity rating of `CRITICAL`.\n2. **Direct Dependency Reachability**: The package `jsonwebtoken@8.5.1` is directly reachable from the service `authentication-service` with a path depth of 1 hop.\n3. **Actionable Remediation Target**: There is a fixed version available (`>= 9.0.0`) to remediate the vulnerability.\n\nThe bounded graph path found is:\n- Depth 1: Service: `authentication-service` \u2192 `jsonwebtoken@8.5.1`\n\nThe deterministic ranking order, as evaluated by Policy v1.0.0, is:\n1. `find-59107925c9d1` (Highest priority) - `jsonwebtoken@8.5.1`\n2. `find-d24d2c11ba44` (Highest priority) - `pyyaml@5.3.1`\n3. `find-5405875948a6` (High priority) - `axios@0.21.1`\n\n**Caveats**:\n- The presence of a path does not guarantee that the vulnerability is exploitable at runtime.\n- The absence of a path does not guarantee absolute safety, as there may be other paths not captured in the graph evidence.",
+        "answer": "The scoring engine prioritizes the finding based on the following evidence:\n\n1. **Finding ID: find-59107925c9d1**\n   - **Service:** authentication-service\n   - **Package:** jsonwebtoken@8.5.1\n   - **Advisory:** OSV-EXAMPLE-JWT-001 (Severity: CRITICAL)\n   - **Priority Band:** Highest\n   - **Priority Reasons:**\n     - Advisory severity is Critical.\n     - Direct dependency reachable from service (path depth: 1 hop).\n     - Actionable remediation target available (fixed in >= 9.0.0).\n   - **Fixed Version:** 9.0.0\n\nThe finding is prioritized as the highest due to the critical severity of the advisory and the direct dependency path from the service. The absence of a path does not guarantee absolute safety, and the finding should be evaluated in the context of the entire project graph.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -1134,14 +1134,14 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 3722.82,
-        "tokens_used": 762,
+        "duration_ms": 2114.03,
+        "tokens_used": 623,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, the scoring engine prioritizes a finding with an unknown upstream advisory severity according to Rule 3 of the Vulnify Priority Scoring Policy Specification v1.0.0. Specifically, when the advisory severity is UNKNOWN, the finding is evaluated with caution and assigned a Medium priority. This is because missing signals are treated as Medium risk, never Low or zero risk.",
+        "answer": "Based on the retrieved context, the scoring engine prioritizes a finding with an unknown upstream advisory severity according to Rule 3 of the Vulnify Priority Scoring Policy Specification v1.0.0. It is assigned a Medium priority. This is because missing signals are evaluated with caution as Medium, never Low or zero risk.",
         "evidence_references": [
           "DOC-ADV-NOFIX-001",
           "DOC-POLICY-SCORING",
@@ -1181,8 +1181,8 @@
             }
           ]
         },
-        "duration_ms": 1723.39,
-        "tokens_used": 1358,
+        "duration_ms": 1487.39,
+        "tokens_used": 1345,
         "error_message": null
       }
     },
@@ -1195,7 +1195,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Vulnify breaks ties between two High-priority findings with identical HIGH severity by evaluating additional factors such as the depth of the path from the service to the vulnerable package and the availability of a fixed version. In this case, the finding with ID `find-5405875948a6` for the package `axios@0.21.1` is ranked third due to the following reasons:\n\n1. **Path Depth**: The path from the service `api-gateway` to the vulnerable package `axios@0.21.1` is only 1 hop deep, which is the same as the other High-priority findings. However, the deterministic ranking order is already provided, and `find-5405875948a6` is ranked third.\n\n2. **Fixed Version Availability**: The advisory `OSV-EXAMPLE-AXIOS-001` indicates that a fixed version (1.6.0) is available for the vulnerable package `axios@0.21.1`. This is consistent with the priority reasons provided, which state that an actionable remediation target is available.\n\nThe absence of a path does not guarantee absolute safety, as there may be other paths or indirect dependencies that could expose the service to the vulnerability. Additionally, the presence of a path does not guarantee runtime exploitability, as it depends on various factors such as the specific configuration of the service and the environment in which it is running.",
+        "answer": "Vulnify breaks ties between two High-priority findings with identical HIGH severity by evaluating additional factors such as the depth of the path from the service to the vulnerable package and the availability of a fixed version. In this case, the finding with ID `find-5405875948a6` for the package `axios@0.21.1` is ranked third due to the following reasons:\n\n1. **Path Depth**: The path from the service `api-gateway` to the vulnerable package `axios@0.21.1` has a depth of 1 hop, which is the same as the other High-priority findings. However, the deterministic ranking order is determined by a combination of factors, and the exact ranking may be influenced by other considerations not explicitly mentioned in the graph evidence.\n\n2. **Fixed Version Availability**: The finding indicates that a fixed version (1.6.0) is available, which is a positive factor in the priority assessment. However, the exact impact of this factor on the ranking is not detailed in the provided evidence.\n\nThe absence of a path does not guarantee absolute safety, as there may be other paths or indirect dependencies that could introduce vulnerabilities. Additionally, the ranking is based on the evidence available at the time of evaluation, and the actual priority may change if new information becomes available.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -1209,14 +1209,14 @@
           "target_finding_id": "find-5405875948a6",
           "priority_band": "High"
         },
-        "duration_ms": 3093.65,
-        "tokens_used": 724,
+        "duration_ms": 4692.06,
+        "tokens_used": 694,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, Vulnify breaks ties between two High-priority findings with identical HIGH severity using the Deterministic Tie-Breaker Precedence Order. The order is as follows:\n\n1. Priority Band (Highest > High > Medium > Low > Unknown)\n2. Advisory Severity (CRITICAL > HIGH > MEDIUM > LOW > UNKNOWN)\n3. Graph Path Status (path_found > no_path > unanalyzed)\n4. Shortest Path Depth (Ascending: 1 hop precedes 2 hops)\n5. Actionable Fix Available (True precedes False)\n6. Advisory ID Alphanumeric Ascending Sort\n\nSince both findings have identical HIGH severity, the next criteria in the tie-breaker order would be used to determine the priority. However, the context does not provide specific information about the graph path status, shortest path depth, actionable fix availability, or advisory IDs for the two findings in question. Therefore, the exact criteria used to break the tie cannot be determined from the provided context.",
+        "answer": "Based on the retrieved context, Vulnify breaks ties between two High-priority findings with identical HIGH severity using the Deterministic Tie-Breaker Precedence Order. The order is as follows:\n\n1. Priority Band (Highest > High > Medium > Low > Unknown)\n2. Advisory Severity (CRITICAL > HIGH > MEDIUM > LOW > UNKNOWN)\n3. Graph Path Status (path_found > no_path > unanalyzed)\n4. Shortest Path Depth (Ascending: 1 hop precedes 2 hops)\n5. Actionable Fix Available (True precedes False)\n6. Advisory ID Alphanumeric Ascending Sort\n\nSince both findings have identical HIGH severity, the next criteria in the tie-breaker order would be used to determine the priority. However, the context does not provide specific information about the graph path status, shortest path depth, actionable fix availability, or advisory IDs for the findings in question. Therefore, the evidence is insufficient to determine how the tie would be broken in this specific case.",
         "evidence_references": [
           "DOC-POLICY-SCORING",
           "DOC-SVC-API-GATEWAY-HOSTILE",
@@ -1256,7 +1256,7 @@
             }
           ]
         },
-        "duration_ms": 3092.31,
+        "duration_ms": 2175.78,
         "tokens_used": 1531,
         "error_message": null
       }
@@ -1270,7 +1270,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the graph evidence provided, the recommended non-breaking upgrade for `semver@5.7.1` affected by `OSV-EXAMPLE-PATCH-001` in the `proj-ecommerce-core` project is to upgrade to version `5.7.2`.\n\nThe upgrade is recommended due to the following reasons:\n- The advisory severity is Medium.\n- The direct dependency is reachable from the service `inventory-service` with a path depth of 1 hop.\n- An actionable remediation target is available in version `5.7.2`.\n\nThe bounded graph path found is:\n- Depth 1: Service: `inventory-service` \u2192 `semver@5.7.1`\n\nIt is important to note that the absence of a path does not guarantee absolute safety, and the recommended upgrade should be implemented to mitigate the identified vulnerability.",
+        "answer": "Based on the graph evidence provided, the recommended non-breaking upgrade for `semver@5.7.1` affected by `OSV-EXAMPLE-PATCH-001` in the `proj-ecommerce-core` project is to upgrade to version `5.7.2`.\n\nThe upgrade is recommended due to the following reasons:\n- The advisory severity is Moderate/Medium.\n- The direct dependency is reachable from the service `inventory-service` with a path depth of 1 hop.\n- An actionable remediation target is available in version `5.7.2`.\n\nThe bounded graph path found is:\n- Depth 1: Service: `inventory-service` \u2192 `semver@5.7.1`\n\nIt is important to note that the absence of a path does not guarantee absolute safety, and the recommended upgrade should be implemented to mitigate the identified vulnerability.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -1284,14 +1284,14 @@
           "target_finding_id": "find-11c68966d8a7",
           "priority_band": "Medium"
         },
-        "duration_ms": 2565.89,
-        "tokens_used": 499,
+        "duration_ms": 3066.17,
+        "tokens_used": 502,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, the recommended non-breaking upgrade for semver@5.7.1 affected by OSV-EXAMPLE-PATCH-001 is semver@5.7.2. This is specified in the advisory OSV-EXAMPLE-PATCH-001, which lists 5.7.2 as the fixed version. The evidence is sufficient to conclude this recommendation.",
+        "answer": "Based on the retrieved context, the recommended non-breaking upgrade for semver@5.7.1 affected by OSV-EXAMPLE-PATCH-001 is semver@5.7.2. This version is listed as a fixed version in the advisory OSV-EXAMPLE-PATCH-001. The evidence is sufficient to conclude this.",
         "evidence_references": [
           "DOC-ADV-PATCH-001",
           "DOC-SVC-INVENTORY",
@@ -1331,8 +1331,8 @@
             }
           ]
         },
-        "duration_ms": 1468.08,
-        "tokens_used": 1295,
+        "duration_ms": 1447.61,
+        "tokens_used": 1286,
         "error_message": null
       }
     },
@@ -1345,7 +1345,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the graph evidence provided, the remediation recommendation for the unmaintained-parser@1.0.0 package in the proj-ecommerce-core project is as follows:\n\n1. **Isolate the Service**: Given that the unmaintained-parser@1.0.0 package is directly reachable from the data-pipeline service (path depth: 1 hop), it is recommended to isolate the data-pipeline service to mitigate the risk posed by the HIGH severity advisory OSV-EXAMPLE-NOFIX-001. This isolation can be achieved by restricting access to the service or by implementing network segmentation.\n\n2. **Monitor for Updates**: Since there is no fixed version available upstream, it is crucial to monitor the package's repository or the advisory for any updates or patches that may become available in the future.\n\n3. **Review Dependencies**: Conduct a thorough review of the data-pipeline service's dependencies to ensure that no other vulnerable packages are being used. This can help in identifying and addressing other potential security risks.\n\n**Priority Band**: The priority band for this finding is High (Policy v1.0.0), as the advisory severity is High, the direct dependency is reachable from the service, and the remediation target is unknown due to the absence of a published fixed version.\n\n**Non-Exploitability Caveat**: It is important to note that the presence of a bounded graph path does not guarantee that the vulnerability can be exploited at runtime. The actual exploitability depends on various factors, including the specific implementation details of the service and the package, as well as the environment in which the service is running. Additionally, the absence of a path does not guarantee absolute safety, as there may be other paths or attack vectors that are not captured in the graph evidence.",
+        "answer": "Based on the graph evidence provided, the remediation recommendation for the unmaintained-parser@1.0.0 package in the proj-ecommerce-core project is as follows:\n\n1. **Isolate the Service**: Given that the unmaintained-parser@1.0.0 package is directly reachable from the data-pipeline service (path depth: 1 hop), it is recommended to isolate the data-pipeline service to mitigate the risk posed by the HIGH severity advisory OSV-EXAMPLE-NOFIX-001. This isolation can be achieved by restricting access to the service or by temporarily taking it offline.\n\n2. **Monitor and Evaluate**: Since there is no fixed version available for the unmaintained-parser@1.0.0 package, continuous monitoring and evaluation of the advisory's status should be conducted. This includes checking for any updates or patches that may become available in the future.\n\n3. **Review Dependencies**: Conduct a thorough review of the data-pipeline service's dependencies to identify any other potential vulnerabilities or risks that may require attention.\n\n**Priority Band**: The priority band for this finding is High (Policy v1.0.0), as indicated in the graph evidence.\n\n**Non-Exploitability Caveat**: It is important to note that the absence of a bounded graph path does not guarantee absolute safety. The presence of a path does not imply that an exploit is possible or will occur. The recommendations provided are based on the current state of the graph evidence and should be reviewed and updated as new information becomes available.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -1359,8 +1359,8 @@
           "target_finding_id": "find-3cd0af5b1b5a",
           "priority_band": "High"
         },
-        "duration_ms": 4647.37,
-        "tokens_used": 682,
+        "duration_ms": 3432.28,
+        "tokens_used": 635,
         "error_message": null
       },
       "rag_result": {
@@ -1406,7 +1406,7 @@
             }
           ]
         },
-        "duration_ms": 1499.98,
+        "duration_ms": 1729.21,
         "tokens_used": 1315,
         "error_message": null
       }
@@ -1420,7 +1420,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Vulnify classifies the SemVer compatibility risk of upgrading axios from 0.21.1 to 1.6.0 as follows:\n\n1. **Exposure**: The upgrade from axios 0.21.1 to 1.6.0 involves a major version change (0.x to 1.x), which may introduce breaking changes. This is a significant SemVer compatibility risk.\n\n2. **Graph Evidence**: The provided graph evidence does not directly relate to the axios package or its upgrade path. Therefore, there is no evidence of vulnerabilities or security risks associated with upgrading axios from 0.21.1 to 1.6.0 based on the given data.\n\n3. **Non-Exploitability Caveat**: The absence of a path to a vulnerability in the graph evidence does not guarantee absolute safety. There may be other vulnerabilities or security risks associated with the upgrade that are not captured in the graph evidence.\n\n4. **Recommendation**: Given the major version change, it is recommended to thoroughly review the release notes and changelog for axios to understand the potential breaking changes and impacts on the project. Additionally, consider conducting compatibility testing and security assessments to ensure the upgrade does not introduce any vulnerabilities or issues.",
+        "answer": "Vulnify classifies the SemVer compatibility risk of upgrading axios from 0.21.1 to 1.6.0 in the proj-ecommerce-core project as follows:\n\n1. **Exposure**: The upgrade to axios 1.6.0 is not directly exposed to any vulnerabilities in the graph evidence provided. The only vulnerability found is in the jsonwebtoken package (version 8.5.1) with advisory OSV-EXAMPLE-JWT-001, which is a critical severity vulnerability. This vulnerability is directly reachable from the authentication-service (path depth: 1 hop) and has a fixed version available (>= 9.0.0).\n\n2. **Priority Band**: The priority band for the jsonwebtoken vulnerability is Highest, as per Policy v1.0.0. This is due to the advisory severity being Critical, the direct dependency reachable from the service, and the availability of an actionable remediation target.\n\n3. **Non-Exploitability Caveat**: The absence of a path from the axios package to any vulnerabilities does not guarantee absolute safety. There may be other vulnerabilities or exposure paths not captured in the current graph evidence. Additionally, the runtime exploitability of vulnerabilities cannot be determined from static analysis alone.\n\n4. **SemVer Compatibility**: The upgrade from axios 0.21.1 to 1.6.0 involves a major version change, which may introduce breaking changes and new features. The SemVer compatibility risk is high due to the potential for breaking changes, but the actual impact on the project's security and functionality would need to be evaluated separately.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -1434,14 +1434,14 @@
           "target_finding_id": "find-59107925c9d1",
           "priority_band": "Highest"
         },
-        "duration_ms": 2673.21,
-        "tokens_used": 577,
+        "duration_ms": 3323.82,
+        "tokens_used": 660,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, Vulnify classifies the SemVer compatibility risk of upgrading axios from 0.21.1 to 1.6.0 as **HIGH** due to the presence of a critical vulnerability (OSV-EXAMPLE-AXIOS-001) affecting versions prior to 1.6.0. The advisory indicates that axios versions below 1.6.0 are vulnerable to header leakage and SSRF issues. Therefore, upgrading to 1.6.0 is recommended to mitigate these risks.",
+        "answer": "Based on the retrieved context, Vulnify classifies the SemVer compatibility risk of upgrading axios from 0.21.1 to 1.6.0 as **HIGH** due to the presence of a critical vulnerability (OSV-EXAMPLE-AXIOS-001) affecting versions prior to 1.6.0. The advisory indicates that axios versions below 1.6.0 are vulnerable to header leakage and SSRF risks, which are mitigated in version 1.6.0.",
         "evidence_references": [
           "DOC-ADV-AXIOS-001",
           "DOC-SVC-API-DEVDEPS",
@@ -1481,8 +1481,8 @@
             }
           ]
         },
-        "duration_ms": 2768.58,
-        "tokens_used": 1300,
+        "duration_ms": 1680.86,
+        "tokens_used": 1296,
         "error_message": null
       }
     },
@@ -1495,7 +1495,7 @@
       "graph_result": {
         "system_id": "graph_agent",
         "status": "success",
-        "answer": "Based on the graph evidence provided, the following security controls prevent the agent from automatically creating a GitHub remediation issue or submitting hostile advisory HTML:\n\n1. **Priority Band**: The finding is classified as \"High\" in the \"High\" priority band (Policy v1.0.0). This indicates that the finding is considered significant and requires manual review or intervention.\n\n2. **Actionable Remediation Target**: The advisory specifies that a fixed version (>= 1.0.1) is available. This suggests that a remediation action is possible, but it may require manual intervention or approval.\n\n3. **Bounded Graph Paths**: The finding is directly reachable from the service (api-gateway) with a path depth of 1 hop. This means the vulnerability is directly accessible from the service, which may require immediate attention.\n\n**Non-exploitability Caveat**: The presence of a bounded graph path does not guarantee that the vulnerability is exploitable at runtime. The actual exploitability depends on various factors, including the specific configuration and usage of the service and the vulnerable package.\n\n**Absence of Path Guarantee**: The absence of a path does not guarantee absolute safety. There may be other paths or attack vectors not captured in the graph evidence that could potentially expose the system to the vulnerability.",
+        "answer": "Based on the graph evidence provided, the following security controls prevent the agent from automatically creating a GitHub remediation issue or submitting hostile advisory HTML:\n\n1. **Priority Band**: The finding is classified as \"High\" in the \"High\" priority band (Policy v1.0.0). This indicates that the finding is considered significant and requires manual review or intervention.\n\n2. **Actionable Remediation Target**: The advisory specifies that a fixed version (>= 1.0.1) is available. This suggests that a remediation action is possible, but it may require manual intervention or approval.\n\n3. **Bounded Graph Paths**: The finding is directly reachable from the service (api-gateway) with a path depth of 1 hop. This means the vulnerability is directly accessible from the service, which may require immediate attention.\n\n**Non-exploitability Caveat**: The presence of a bounded graph path does not guarantee that the vulnerability is exploitable at runtime. The actual exploitability depends on various factors, including the specific configuration and usage of the service, which are not provided in the graph evidence.\n\n**Absence of Path Caveat**: The absence of a path does not guarantee absolute safety, as there may be other paths or indirect dependencies that are not captured in the graph evidence.",
         "evidence_references": [
           "cypher:get_project_finding_paths",
           "cypher:rank_project_findings",
@@ -1509,14 +1509,14 @@
           "target_finding_id": "find-8d7aeab29434",
           "priority_band": "High"
         },
-        "duration_ms": 3218.58,
-        "tokens_used": 575,
+        "duration_ms": 2827.12,
+        "tokens_used": 573,
         "error_message": null
       },
       "rag_result": {
         "system_id": "rag_baseline",
         "status": "success",
-        "answer": "Based on the retrieved context, the security controls preventing the agent from automatically creating a GitHub remediation issue or submitting hostile advisory HTML are:\n\n1. **Vulnify Priority Scoring Policy Specification v1.0.0**: This policy defines deterministic rules for scoring vulnerabilities, which likely includes checks to validate the authenticity and safety of advisories before they are processed or acted upon. The policy's rules for severity, version match status, and graph path status (confirmed reachability) would help filter out or flag potentially hostile advisories like OSV-EXAMPLE-HOSTILE-001.\n\n2. **api-gateway package.json Manifest**: The manifest shows that the api-gateway service uses the package \"hostile-parser\" version 1.0.0, which is affected by the advisory OSV-EXAMPLE-HOSTILE-001. However, the context does not provide explicit information on how this affects the agent's behavior in creating remediation issues or submitting hostile HTML.\n\nThe context does not provide sufficient evidence to confirm whether these controls are sufficient to prevent the agent from automatically creating a GitHub remediation issue or submitting hostile advisory HTML. The policy and manifest information suggest a level of scrutiny, but the exact mechanisms and their effectiveness are not detailed in the retrieved context.",
+        "answer": "Based on the retrieved context, the security controls preventing the agent from automatically creating a GitHub remediation issue or submitting hostile advisory HTML are:\n\n1. **Vulnify Priority Scoring Policy**: The policy specifies rules for determining the priority of vulnerabilities, which includes considering the severity of the advisory, the version match status, and the graph path status. This policy helps ensure that only high-priority vulnerabilities are acted upon, reducing the likelihood of hostile advisories being automatically processed.\n\n2. **Package Version Management**: The context shows that the `api-gateway` package is using version `1.0.0` of `hostile-parser`, which is below the fixed version `1.0.1` mentioned in the advisory `OSV-EXAMPLE-HOSTILE-001`. This indicates that the package is not affected by the vulnerability described in the advisory, thus preventing the agent from creating a remediation issue based on this advisory.\n\nThe evidence is insufficient to determine if there are additional security controls in place to prevent the submission of hostile advisory HTML. The context does not provide information about any specific measures or configurations that would prevent the agent from submitting such content.",
         "evidence_references": [
           "DOC-ADV-HOSTILE-001",
           "DOC-SVC-API-GATEWAY-HOSTILE",
@@ -1556,8 +1556,8 @@
             }
           ]
         },
-        "duration_ms": 2930.97,
-        "tokens_used": 1579,
+        "duration_ms": 2686.84,
+        "tokens_used": 1554,
         "error_message": null
       }
     }

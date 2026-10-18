@@ -101,6 +101,18 @@ type int_number = number
 
 export type { ApiErrorPayload } from '@/shared/types/api'
 
+export type OsvPackageOutcomeKind = 'advisories_found' | 'no_advisories' | 'skipped' | 'query_failed'
+
+export interface OsvPackageOutcome {
+  package_version_id: string
+  name: string
+  version: string
+  ecosystem: string
+  outcome: OsvPackageOutcomeKind
+  advisory_ids: string[]
+  reason?: string | null
+}
+
 export interface OsvImportSummary {
   project_id: string
   total_package_versions: number
@@ -112,6 +124,7 @@ export interface OsvImportSummary {
   advisories_updated: number
   relationships_created: number
   relationships_reused: number
+  packages_with_advisories: number
   packages_with_no_advisories: number
   skipped_packages: number
   failed_lookups: number
@@ -119,6 +132,7 @@ export interface OsvImportSummary {
   errors: string[]
   duration_ms: number
   job_id?: string | null
+  package_results: OsvPackageOutcome[]
 }
 
 export interface ProjectAdvisory {

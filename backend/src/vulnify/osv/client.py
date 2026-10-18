@@ -6,6 +6,7 @@ import logging
 import random
 import time
 from typing import Any
+from urllib.parse import quote
 import httpx
 
 from vulnify.config import Settings
@@ -119,6 +120,78 @@ class OsvClient:
 
         return []
 
+    async def fetch_vulnerability(
+        self,
+        vuln_id: str,
+        client: httpx.AsyncClient | None = None,
+    ) -> dict[str, Any]:
+        """Fetch the full OSV record via GET /v1/vulns/{id} with retries."""
+        url = f"{self.base_url}/v1/vulns/{quote(vuln_id, safe='')}"
+
+        async with self._semaphore:
+            active_client = client or await self._get_client()
+            should_close = client is None and self._custom_client is None
+            try:
+                for attempt in range(self.max_retries + 1):
+                    try:
+                        resp = await active_client.get(url)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            if not isinstance(data, dict) or str(data.get("id") or "") != vuln_id:
+                                raise OsvApiError(f"OSV returned an unexpected record for {vuln_id}")
+                            return data
+
+                        is_transient = resp.status_code in TRANSIENT_STATUS_CODES
+                        if is_transient and attempt < self.max_retries:
+                            await asyncio.sleep(self._calculate_backoff(attempt, resp))
+                            continue
+                        raise OsvApiError(
+                            f"OSV advisory fetch failed with status {resp.status_code}",
+                            status_code=resp.status_code,
+                            is_transient=is_transient,
+                        )
+                    except (httpx.TimeoutException, httpx.NetworkError) as net_err:
+                        if attempt < self.max_retries:
+                            await asyncio.sleep(self._calculate_backoff(attempt))
+                            continue
+                        raise OsvApiError(f"OSV connection timeout or network failure: {net_err}", is_transient=True) from net_err
+            finally:
+                if should_close:
+                    await active_client.aclose()
+
+        raise OsvApiError(f"OSV advisory fetch exhausted retries for {vuln_id}", is_transient=True)
+
+    async def _hydrate_batch_results(
+        self,
+        raw_by_query: dict[OsvQuery, list[dict[str, Any]]],
+        client: httpx.AsyncClient,
+        now_ts: int,
+    ) -> tuple[dict[OsvQuery, list[OsvVulnerability]], list[tuple[OsvQuery, str]]]:
+        # /v1/querybatch returns only {id, modified}; full records come from /v1/vulns/{id}.
+        ids_to_fetch = sorted({v["id"] for vulns in raw_by_query.values() for v in vulns if "affected" not in v})
+        hydrated: dict[str, dict[str, Any]] = {}
+        fetch_errors: dict[str, str] = {}
+
+        async def _fetch(vuln_id: str) -> None:
+            try:
+                hydrated[vuln_id] = await self.fetch_vulnerability(vuln_id, client=client)
+            except Exception as err:
+                fetch_errors[vuln_id] = str(err)
+
+        await asyncio.gather(*(_fetch(vid) for vid in ids_to_fetch))
+
+        results_map: dict[OsvQuery, list[OsvVulnerability]] = {}
+        failed_list: list[tuple[OsvQuery, str]] = []
+        for query, vulns in raw_by_query.items():
+            missing = [v["id"] for v in vulns if v["id"] in fetch_errors]
+            if missing:
+                failed_list.append(
+                    (query, f"Advisory details unavailable for {', '.join(missing)}: {fetch_errors[missing[0]]}")
+                )
+                continue
+            results_map[query] = [parse_osv_vulnerability(hydrated.get(v["id"], v), now_ts) for v in vulns]
+        return results_map, failed_list
+
     async def query_batch(
         self,
         queries: list[OsvQuery],
@@ -139,13 +212,14 @@ class OsvClient:
 
         results_map: dict[OsvQuery, list[OsvVulnerability]] = {}
         failed_list: list[tuple[OsvQuery, str]] = []
+        raw_by_query: dict[OsvQuery, list[dict[str, Any]]] = {}
 
         active_client = client or await self._get_client()
         should_close = client is None and self._custom_client is None
 
         batch_succeeded = False
-        async with self._semaphore:
-            try:
+        try:
+            async with self._semaphore:
                 for attempt in range(self.max_retries + 1):
                     try:
                         resp = await active_client.post(url, json=payload)
@@ -153,16 +227,18 @@ class OsvClient:
                             data = resp.json()
                             raw_results = data.get("results") or []
                             for idx, query in enumerate(queries):
-                                if idx < len(raw_results):
-                                    item = raw_results[idx]
-                                    vulns_raw = item.get("vulns") or [] if isinstance(item, dict) else []
-                                    results_map[query] = [
-                                        parse_osv_vulnerability(v, now_ts)
-                                        for v in vulns_raw
-                                        if isinstance(v, dict)
-                                    ]
-                                else:
-                                    results_map[query] = []
+                                item = raw_results[idx] if idx < len(raw_results) else None
+                                if not isinstance(item, dict):
+                                    failed_list.append((query, "OSV querybatch response had no result for this query."))
+                                    continue
+                                if item.get("next_page_token"):
+                                    failed_list.append(
+                                        (query, "OSV returned paginated results; the full advisory list was not retrieved.")
+                                    )
+                                    continue
+                                raw_by_query[query] = [
+                                    v for v in (item.get("vulns") or []) if isinstance(v, dict) and v.get("id")
+                                ]
                             batch_succeeded = True
                             break
 
@@ -195,22 +271,22 @@ class OsvClient:
                         )
                         break
 
-            finally:
-                if should_close and batch_succeeded:
-                    await active_client.aclose()
-
-        # Fallback to individual queries for resilient partial success if batch query failed
-        if not batch_succeeded:
-            try:
+            if batch_succeeded:
+                hydrated_map, hydration_failures = await self._hydrate_batch_results(
+                    raw_by_query, active_client, now_ts
+                )
+                results_map.update(hydrated_map)
+                failed_list.extend(hydration_failures)
+            else:
+                # Fallback to individual /v1/query lookups (full records) for resilient partial success
                 for q in queries:
                     try:
-                        vulns = await self.query_single(q, client=active_client)
-                        results_map[q] = vulns
+                        results_map[q] = await self.query_single(q, client=active_client)
                     except Exception as err:
                         logger.warning(f"Failed lookup for {q.package.name}@{q.version}: {err}")
                         failed_list.append((q, str(err)))
-            finally:
-                if should_close:
-                    await active_client.aclose()
+        finally:
+            if should_close:
+                await active_client.aclose()
 
         return results_map, failed_list
