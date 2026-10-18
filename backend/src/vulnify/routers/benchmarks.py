@@ -122,27 +122,19 @@ async def get_benchmark_summary() -> BenchmarkSummaryResponse:
 @router.get(
     "/results/latest",
     response_model=BenchmarkRunResult,
-    summary="Get latest benchmark comparison run result (US-802)",
+    summary="Get latest benchmark comparison run result (US-802 / US-803)",
 )
 async def get_latest_benchmark_result() -> BenchmarkRunResult:
-    """Retrieve the latest comparative evaluation result between Graph Agent and RAG Baseline."""
+    """Retrieve the latest comparative evaluation result between Graph Agent and RAG Baseline.
+
+    Returns 404 if no benchmark comparison run exists yet (AC2: 'no results yet' state).
+    """
     latest_file = Path("benchmarks/results/latest_run.json")
     if not latest_file.exists():
-        # Execute an initial run if no cached run exists
-        try:
-            from vulnify.benchmarks.runner import run_benchmark_comparison
-
-            return await run_benchmark_comparison(
-                dataset_path="benchmarks/benchmark_dataset.json",
-                corpus_path="benchmarks/evidence_corpus.json",
-                output_path="benchmarks/results/latest_run.json",
-                quiet=True,
-            )
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to generate initial benchmark comparison run: {exc}",
-            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No benchmark run results found yet. Execute the benchmark harness first.",
+        )
 
     try:
         with latest_file.open("r", encoding="utf-8") as f:
@@ -155,20 +147,92 @@ async def get_latest_benchmark_result() -> BenchmarkRunResult:
         ) from exc
 
 
+class BenchmarkRunMetadata(BaseModel):
+    """Metadata summary of a stored benchmark comparison run artifact."""
+
+    filename: str
+    run_id: str
+    created_at: str
+    dataset_version: str
+    total_cases: int
+    graph_success_count: int
+    rag_success_count: int
+
+
 @router.get(
     "/results",
-    summary="List historical benchmark comparison run files",
+    response_model=list[BenchmarkRunMetadata],
+    summary="List historical benchmark comparison run artifacts (US-803)",
 )
-async def list_benchmark_results() -> list[dict[str, str]]:
-    """List available benchmark comparison run JSON artifacts."""
+async def list_benchmark_results() -> list[BenchmarkRunMetadata]:
+    """List available benchmark comparison run JSON artifacts with metadata."""
     results_dir = Path("benchmarks/results")
     if not results_dir.exists():
         return []
 
-    runs = []
+    runs: list[BenchmarkRunMetadata] = []
     for file in sorted(results_dir.glob("benchmark_run_*.json"), reverse=True):
-        runs.append({"filename": file.name, "path": str(file)})
+        try:
+            with file.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            runs.append(
+                BenchmarkRunMetadata(
+                    filename=file.name,
+                    run_id=data.get("run_id", file.stem),
+                    created_at=data.get("started_at", ""),
+                    dataset_version=data.get("dataset_version", "1.0.0"),
+                    total_cases=data.get("summary", {}).get("total_cases", 0),
+                    graph_success_count=data.get("summary", {}).get("graph_success_count", 0),
+                    rag_success_count=data.get("summary", {}).get("rag_success_count", 0),
+                )
+            )
+        except Exception:
+            # Fallback for unparseable artifacts
+            runs.append(
+                BenchmarkRunMetadata(
+                    filename=file.name,
+                    run_id=file.stem,
+                    created_at="",
+                    dataset_version="1.0.0",
+                    total_cases=0,
+                    graph_success_count=0,
+                    rag_success_count=0,
+                )
+            )
     return runs
+
+
+@router.get(
+    "/results/run/{filename}",
+    response_model=BenchmarkRunResult,
+    summary="Get specific historical benchmark comparison run result (US-803)",
+)
+async def get_historical_benchmark_result(filename: str) -> BenchmarkRunResult:
+    """Retrieve a specific historical benchmark run by filename."""
+    # Sanitize filename: only allow benchmark_run_*.json or safe alphanumeric names
+    clean_name = Path(filename).name
+    if not clean_name.endswith(".json") or (".." in clean_name) or ("/" in clean_name) or ("\\" in clean_name):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid benchmark run filename.",
+        )
+
+    target_file = Path("benchmarks/results") / clean_name
+    if not target_file.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Benchmark run file '{clean_name}' not found.",
+        )
+
+    try:
+        with target_file.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return BenchmarkRunResult.model_validate(data)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to parse benchmark results file '{clean_name}': {exc}",
+        ) from exc
 
 
 class TriggerBenchmarkRunRequest(BaseModel):

@@ -1,424 +1,586 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
+  AlertCircle,
+  BarChart3,
   CheckCircle2,
-  XCircle,
-  Info,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Cpu,
   Filter,
+  Info,
+  Layers,
+  Play,
+  RefreshCw,
+  XCircle,
 } from 'lucide-react'
-
-interface BenchmarkQuestion {
-  id: string
-  category: 'Path Existence' | 'No-Path Negative' | 'Architectural Exposure' | 'Deterministic Ranking' | 'Remediation'
-  question: string
-  groundTruth: string
-  graphOutcome: 'PASS' | 'FAIL'
-  ragOutcome: 'PASS' | 'FAIL'
-  graphLatencyMs: number
-  ragLatencyMs: number
-  notes: string
-}
-
-// 20 Hand-Verified Benchmark Questions as specified in US-801 & US-802
-const BENCHMARK_QUESTIONS: BenchmarkQuestion[] = [
-  {
-    id: 'BM-001',
-    category: 'Path Existence',
-    question: 'Does authentication-service reach vulnerable lodash@4.17.15?',
-    groundTruth: 'Yes, 3 hops via auth-helpers -> token-verifier -> lodash',
-    graphOutcome: 'PASS',
-    ragOutcome: 'PASS',
-    graphLatencyMs: 142,
-    ragLatencyMs: 1890,
-    notes: 'Both systems found the direct dependency.',
-  },
-  {
-    id: 'BM-002',
-    category: 'Path Existence',
-    question: 'What is the shortest reachability path from gateway to jsonwebtoken?',
-    groundTruth: 'gateway -> session-mgr -> jsonwebtoken (depth 2)',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    ragLatencyMs: 2310,
-    graphLatencyMs: 110,
-    notes: 'Vector RAG hallucinated an intermediary microservice not in lockfile.',
-  },
-  {
-    id: 'BM-003',
-    category: 'Path Existence',
-    question: 'How many hops separate public-api and axios@0.21.1?',
-    groundTruth: 'Exact depth 4 bounded traversal',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 165,
-    ragLatencyMs: 2450,
-    notes: 'RAG cannot count transitive graph hops accurately.',
-  },
-  {
-    id: 'BM-004',
-    category: 'Path Existence',
-    question: 'Does inventory-worker import redis-parser transitively?',
-    groundTruth: 'Yes, via redis -> redis-parser',
-    graphOutcome: 'PASS',
-    ragOutcome: 'PASS',
-    graphLatencyMs: 95,
-    ragLatencyMs: 1720,
-    notes: 'Direct 2-step chain successfully identified by both.',
-  },
-  {
-    id: 'BM-005',
-    category: 'No-Path Negative',
-    question: 'Can payment-processor reach vulnerable pyyaml@5.3?',
-    groundTruth: 'No path found. Disjoint service boundary.',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 65,
-    ragLatencyMs: 2100,
-    notes: 'RAG assumed exposure because pyyaml was mentioned in requirements.txt of another service.',
-  },
-  {
-    id: 'BM-006',
-    category: 'No-Path Negative',
-    question: 'Is vulnerable uritools reached by notification-service?',
-    groundTruth: 'No path found in active project graph.',
-    graphOutcome: 'PASS',
-    ragOutcome: 'PASS',
-    graphLatencyMs: 58,
-    ragLatencyMs: 1950,
-    notes: 'Both correctly returned negative result.',
-  },
-  {
-    id: 'BM-007',
-    category: 'No-Path Negative',
-    question: 'Does devDependencies-only jest vulnerability expose production cluster?',
-    groundTruth: 'No path. Filtered out from production dependency manifest.',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 72,
-    ragLatencyMs: 2200,
-    notes: 'RAG conflated dev dependencies with production runtime exposure.',
-  },
-  {
-    id: 'BM-008',
-    category: 'No-Path Negative',
-    question: 'Can internal-cron trigger vulnerable express route?',
-    groundTruth: 'No path: cron service has no inbound listener or route edge.',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 84,
-    ragLatencyMs: 2600,
-    notes: 'RAG failed to model unidirectional topology edges.',
-  },
-  {
-    id: 'BM-009',
-    category: 'Architectural Exposure',
-    question: 'Is vulnerable node-forge exposed to internet ingress?',
-    groundTruth: 'Yes, ingress -> gateway -> auth -> node-forge',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 180,
-    ragLatencyMs: 2800,
-    notes: 'Graph combined network ingress flags with package lockfile graph.',
-  },
-  {
-    id: 'BM-010',
-    category: 'Architectural Exposure',
-    question: 'Does offline-batch-job expose any internet-facing ports?',
-    groundTruth: 'No, internet_facing=false on service node.',
-    graphOutcome: 'PASS',
-    ragOutcome: 'PASS',
-    graphLatencyMs: 60,
-    ragLatencyMs: 1400,
-    notes: 'Single metadata property match succeeded on both.',
-  },
-  {
-    id: 'BM-011',
-    category: 'Architectural Exposure',
-    question: 'What is the entrypoint service for CVE-2021-3749 exposure?',
-    groundTruth: 'api-gateway service',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 135,
-    ragLatencyMs: 2500,
-    notes: 'Vector search retrieved irrelevant service README chunks.',
-  },
-  {
-    id: 'BM-012',
-    category: 'Architectural Exposure',
-    question: 'Are synthetic edges used in the exposure chain for redis-py?',
-    groundTruth: 'Yes, provenance origin=synthetic on call edge.',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 90,
-    ragLatencyMs: 2150,
-    notes: 'Graph stores edge provenance explicitly as a graph property.',
-  },
-  {
-    id: 'BM-013',
-    category: 'Deterministic Ranking',
-    question: 'Why is GHSA-c7cv-832f-4838 ranked in Highest priority band?',
-    groundTruth: 'Severity CRITICAL + internet-facing path + depth <= 3',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 110,
-    ragLatencyMs: 2900,
-    notes: 'RAG hallucinated CVSS score weights not in scoring.md spec.',
-  },
-  {
-    id: 'BM-014',
-    category: 'Deterministic Ranking',
-    question: 'What priority band is assigned to a Moderate finding with no network path?',
-    groundTruth: 'Low (missing internet path downgrade)',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 95,
-    ragLatencyMs: 2300,
-    notes: 'Graph scoring is rule-deterministic; RAG nondeterministically shifted bands.',
-  },
-  {
-    id: 'BM-015',
-    category: 'Deterministic Ranking',
-    question: 'Does the tie-breaker use hub package dependent count?',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    groundTruth: 'Yes, degree centrality in FalkorDB breaks identical scores',
-    graphLatencyMs: 140,
-    ragLatencyMs: 3100,
-    notes: 'Vector RAG has no topology degree centrality calculations.',
-  },
-  {
-    id: 'BM-016',
-    category: 'Deterministic Ranking',
-    question: 'How are missing exploit-prediction signals treated?',
-    groundTruth: 'Labelled "unknown", never defaulted to zero risk.',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 50,
-    ragLatencyMs: 1800,
-    notes: 'RAG hallucinated zero-likelihood when signal was missing.',
-  },
-  {
-    id: 'BM-017',
-    category: 'Remediation',
-    question: 'What is the recommended non-breaking upgrade for semver@5.7.1?',
-    groundTruth: 'Candidate 5.7.2 (Patch only, low breaking risk)',
-    graphOutcome: 'PASS',
-    ragOutcome: 'PASS',
-    graphLatencyMs: 85,
-    ragLatencyMs: 1650,
-    notes: 'Both retrieved standard semver patch version.',
-  },
-  {
-    id: 'BM-018',
-    category: 'Remediation',
-    question: 'Is upgrading axios from 0.21.1 to 1.6.0 a major SemVer jump?',
-    groundTruth: 'Yes, Major Jump with potential breaking changes',
-    graphOutcome: 'PASS',
-    ragOutcome: 'PASS',
-    graphLatencyMs: 70,
-    ragLatencyMs: 1500,
-    notes: 'SemVer jump classification succeeded on both.',
-  },
-  {
-    id: 'BM-019',
-    category: 'Remediation',
-    question: 'Does GHSA-35jh-r3h4-6jhm specify a fixed version?',
-    groundTruth: 'No upstream fixed version exists.',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 65,
-    ragLatencyMs: 2100,
-    notes: 'RAG invented a fictitious 2.0.0 patch release.',
-  },
-  {
-    id: 'BM-020',
-    category: 'Remediation',
-    question: 'Does the remediation issue copy untrusted advisory HTML raw?',
-    groundTruth: 'Never. Structured Markdown fields only with plan hash.',
-    graphOutcome: 'PASS',
-    ragOutcome: 'FAIL',
-    graphLatencyMs: 45,
-    ragLatencyMs: 2400,
-    notes: 'RAG pasted unescaped advisory markdown susceptible to injection.',
-  },
-]
+import {
+  type BenchmarkRunMetadata,
+  type BenchmarkRunResult,
+  type CaseComparisonResult,
+  deriveCategoryMetrics,
+  fetchHistoricalBenchmarkRuns,
+  fetchLatestBenchmarkRun,
+  fetchBenchmarkRunByFilename,
+  getCategoryDisplayName,
+  getSystemDisplayName,
+  triggerBenchmarkRun,
+} from './benchmarkApi'
 
 export function BenchmarksPage() {
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
+  const [runResult, setRunResult] = useState<BenchmarkRunResult | null>(null)
+  const [historicalRuns, setHistoricalRuns] = useState<BenchmarkRunMetadata[]>([])
+  const [selectedFilename, setSelectedFilename] = useState<string>('latest')
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL')
+  const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null)
+  const [runningBenchmark, setRunningBenchmark] = useState<boolean>(false)
 
-  const filteredQuestions = BENCHMARK_QUESTIONS.filter(
-    (q) => selectedCategory === 'ALL' || q.category === selectedCategory,
+  // 1. Initial Load of Latest Run & History List
+  const loadInitialData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [latest, history] = await Promise.all([
+        fetchLatestBenchmarkRun(),
+        fetchHistoricalBenchmarkRuns().catch(() => []),
+      ])
+      setRunResult(latest)
+      setHistoricalRuns(history)
+      setSelectedFilename('latest')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load benchmark results.')
+      setRunResult(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadInitialData()
+  }, [loadInitialData])
+
+  // 2. Handle Historical Run Selection
+  const handleSelectRun = async (filename: string) => {
+    setSelectedFilename(filename)
+    setLoading(true)
+    setError(null)
+    try {
+      if (filename === 'latest') {
+        const latest = await fetchLatestBenchmarkRun()
+        setRunResult(latest)
+      } else {
+        const selected = await fetchBenchmarkRunByFilename(filename)
+        setRunResult(selected)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to load run '${filename}'.`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 3. Trigger Fresh Benchmark Run
+  const handleTriggerRun = async () => {
+    setRunningBenchmark(true)
+    setError(null)
+    try {
+      const freshRun = await triggerBenchmarkRun()
+      setRunResult(freshRun)
+      setSelectedFilename('latest')
+      // Refresh history list
+      const history = await fetchHistoricalBenchmarkRuns().catch(() => [])
+      setHistoricalRuns(history)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Benchmark execution failed.')
+    } finally {
+      setRunningBenchmark(false)
+    }
+  }
+
+  // Derive category metrics dynamically from the actual loaded cases
+  const cases: CaseComparisonResult[] = runResult?.cases ?? []
+  const categoryMetrics = deriveCategoryMetrics(cases)
+
+  const filteredCases = cases.filter(
+    (c) => selectedCategory === 'ALL' || c.category === selectedCategory,
   )
 
-  const graphPassCount = BENCHMARK_QUESTIONS.filter((q) => q.graphOutcome === 'PASS').length
-  const ragPassCount = BENCHMARK_QUESTIONS.filter((q) => q.ragOutcome === 'PASS').length
+  // Top-level summary counts derived from cases
+  const totalCases = cases.length
+  const graphSuccessCount = cases.filter((c) => c.graph_result.status === 'success').length
+  const ragSuccessCount = cases.filter((c) => c.rag_result.status === 'success').length
 
-  const avgGraphLatency = Math.round(
-    BENCHMARK_QUESTIONS.reduce((acc, q) => acc + q.graphLatencyMs, 0) / BENCHMARK_QUESTIONS.length,
-  )
-  const avgRagLatency = Math.round(
-    BENCHMARK_QUESTIONS.reduce((acc, q) => acc + q.ragLatencyMs, 0) / BENCHMARK_QUESTIONS.length,
-  )
+  const avgGraphLatency =
+    totalCases > 0
+      ? Math.round(cases.reduce((sum, c) => sum + (c.graph_result.duration_ms || 0), 0) / totalCases * 10) / 10
+      : 0
+  const avgRagLatency =
+    totalCases > 0
+      ? Math.round(cases.reduce((sum, c) => sum + (c.rag_result.duration_ms || 0), 0) / totalCases * 10) / 10
+      : 0
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
+      {/* A. Page Header & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-white">Agent Benchmarks</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-bold tracking-tight text-white">Benchmark Results</h1>
             <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
-              US-801 &bull; US-802 &bull; US-803
+              US-802 &bull; US-803
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            Hand-verified benchmark comparing Vulnify’s FalkorDB graph-augmented agent against a standard Vector RAG baseline.
+            Head-to-head empirical comparison of Vulnify Graph Agent against RAG Baseline using the exact same evidence and model.
           </p>
         </div>
 
-        <div className="text-xs text-slate-400 font-mono">
-          N = 20 Verified Questions &bull; Double-blind Reviewed
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Historical Run Selector (if runs exist) */}
+          {historicalRuns.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-[#0f1822] border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
+              <Clock className="h-3.5 w-3.5 text-slate-400" />
+              <label htmlFor="run-select" className="sr-only">
+                Select benchmark run
+              </label>
+              <select
+                id="run-select"
+                value={selectedFilename}
+                onChange={(e) => handleSelectRun(e.target.value)}
+                className="bg-transparent text-slate-300 font-mono focus:outline-none cursor-pointer"
+                disabled={loading || runningBenchmark}
+              >
+                <option value="latest">Latest Run ({runResult?.run_id ?? 'active'})</option>
+                {historicalRuns.map((r) => (
+                  <option key={r.filename} value={r.filename}>
+                    {r.run_id} ({r.total_cases} cases)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Re-run button */}
+          <button
+            type="button"
+            onClick={handleTriggerRun}
+            disabled={loading || runningBenchmark}
+            className="flex items-center gap-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white px-3 py-1.5 text-xs font-semibold transition"
+          >
+            {runningBenchmark ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                <span>Running Harness...</span>
+              </>
+            ) : (
+              <>
+                <Play className="h-3.5 w-3.5 fill-current" />
+                <span>Run Benchmark</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Honesty & Methodology Notice */}
-      <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 text-xs text-sky-200">
-        <div className="flex items-start gap-2.5">
-          <Info className="h-4 w-4 text-sky-400 mt-0.5 shrink-0" aria-hidden="true" />
-          <div className="space-y-1">
-            <span className="font-semibold text-white">Benchmark Transparency & Honest Sample Size:</span>
-            <p className="text-sky-200/90 leading-relaxed">
-              Per Vulnify honesty rules and US-803 acceptance criteria: all metrics shown reflect the exact
-              20 hand-verified benchmark questions defined in the repository specification. The baseline utilizes
-              the identical LLM with chunk-based vector embeddings of the same lockfiles and OSV JSON files.
-              No synthetic numbers or fabricated telemetry are used.
+      {/* Loading State */}
+      {loading && !runResult && (
+        <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-12 text-center space-y-3">
+          <RefreshCw className="h-7 w-7 text-sky-400 animate-spin mx-auto" />
+          <h3 className="text-sm font-semibold text-white">Loading Measured Results...</h3>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            Retrieving real execution records, dependency graph traversals, and baseline metrics.
+          </p>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && !loading && (
+        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-5 text-xs text-rose-200 space-y-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h3 className="font-semibold text-white">Unable to Load Benchmark Results</h3>
+              <p className="text-rose-200/90 leading-relaxed">{error}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={loadInitialData}
+            className="inline-flex items-center gap-1.5 rounded-md bg-rose-600/30 border border-rose-500/40 text-rose-100 px-3 py-1 text-xs font-medium hover:bg-rose-600/50 transition"
+          >
+            <RefreshCw className="h-3 w-3" />
+            <span>Try Again</span>
+          </button>
+        </div>
+      )}
+
+      {/* Empty State: No Results Yet (AC-2) */}
+      {!loading && !error && !runResult && (
+        <div className="rounded-xl border border-dashed border-slate-700 bg-[#0f1822] p-12 text-center space-y-4">
+          <div className="inline-flex p-3 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400">
+            <BarChart3 className="h-6 w-6" />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="text-base font-bold text-white">No Benchmark Results Yet</h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+              No benchmark comparison run exists in the repository yet.
+              Per US-803 acceptance criteria, measured counts and comparisons will appear after the US-802 harness has been executed.
             </p>
           </div>
-        </div>
-      </div>
-
-      {/* Head-to-Head KPI Comparison Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-4 space-y-1">
-          <div className="text-xs font-medium text-slate-400">Graph Accuracy (Vulnify)</div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-emerald-400">{graphPassCount}/20</span>
-            <span className="text-xs font-semibold text-emerald-300">100%</span>
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={handleTriggerRun}
+              disabled={runningBenchmark}
+              className="inline-flex items-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 text-xs font-semibold shadow-sm transition disabled:opacity-50"
+            >
+              {runningBenchmark ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  <span>Executing Harness...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                  <span>Execute Benchmark Harness Now</span>
+                </>
+              )}
+            </button>
           </div>
-          <div className="text-[11px] text-slate-500">Deterministic graph traversal</div>
-        </div>
-
-        <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-4 space-y-1">
-          <div className="text-xs font-medium text-slate-400">Vector RAG Accuracy</div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-amber-400">{ragPassCount}/20</span>
-            <span className="text-xs font-semibold text-amber-300">35%</span>
+          <div className="pt-2 text-[11px] text-slate-500 font-mono">
+            CLI command: python -m vulnify.benchmarks.runner
           </div>
-          <div className="text-[11px] text-slate-500">Struggles with multi-hop chains</div>
         </div>
+      )}
 
-        <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-4 space-y-1">
-          <div className="text-xs font-medium text-slate-400">Avg Graph Query Latency</div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-sky-400">{avgGraphLatency}ms</span>
-            <span className="text-xs font-medium text-slate-400">FalkorDB in-memory</span>
+      {/* Populated State */}
+      {!loading && runResult && (
+        <div className="space-y-6">
+          {/* Small Sample Size Notice (AC-1) */}
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
+            <div className="flex items-start gap-2.5">
+              <Info className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" aria-hidden="true" />
+              <div className="space-y-1">
+                <span className="font-semibold text-white">Notice on Sample Size & Scientific Scope:</span>
+                <p className="text-amber-200/90 leading-relaxed">
+                  These results are measured across a hand-verified dataset of <strong>N = {totalCases}</strong> cases
+                  (Dataset Version: {runResult.dataset_version}). While statistically limited by design, this targeted benchmark
+                  isolates architectural reachability, transitive multi-hop dependencies, disjoint microservice boundaries,
+                  and deterministic ranking where graph topology provides structural evidence that vector RAG cannot reliably resolve.
+                  Do not interpret small-sample outcomes as universal proof of general performance.
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="text-[11px] text-slate-500">Indexed Cypher execution</div>
-        </div>
 
-        <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-4 space-y-1">
-          <div className="text-xs font-medium text-slate-400">Avg RAG Search Latency</div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-400">{avgRagLatency}ms</span>
-            <span className="text-xs font-medium text-slate-400">Vector embeddings</span>
+          {/* B. Experiment Metadata & Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Run Identification */}
+            <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-4 space-y-1">
+              <div className="flex items-center justify-between text-slate-400 text-xs">
+                <span>Experiment Run ID</span>
+                <Layers className="h-3.5 w-3.5 text-slate-500" />
+              </div>
+              <div className="text-sm font-bold text-white font-mono truncate" title={runResult.run_id}>
+                {runResult.run_id}
+              </div>
+              <div className="text-[11px] text-slate-500 truncate">
+                Started: {new Date(runResult.started_at).toLocaleTimeString()} &bull; Corpus: {runResult.corpus_id}
+              </div>
+            </div>
+
+            {/* Shared Model Configuration */}
+            <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-4 space-y-1">
+              <div className="flex items-center justify-between text-slate-400 text-xs">
+                <span>Fairness Protocol (Shared Model)</span>
+                <Cpu className="h-3.5 w-3.5 text-slate-500" />
+              </div>
+              <div className="text-sm font-bold text-sky-400 font-mono">
+                {runResult.protocol.shared_model}
+              </div>
+              <div className="text-[11px] text-slate-500">
+                Provider: {runResult.protocol.shared_provider} &bull; Temp: {runResult.protocol.temperature}
+              </div>
+            </div>
+
+            {/* Graph Agent Execution */}
+            <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-4 space-y-1">
+              <div className="flex items-center justify-between text-slate-400 text-xs">
+                <span>{getSystemDisplayName(runResult.protocol.graph_system_name)}</span>
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-bold text-white">
+                  {graphSuccessCount} / {totalCases}
+                </span>
+                <span className="text-xs font-semibold text-emerald-400">
+                  {totalCases > 0 ? `${Math.round((graphSuccessCount / totalCases) * 100)}%` : '0%'} completed
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500">
+                Avg Latency: {avgGraphLatency}ms per query
+              </div>
+            </div>
+
+            {/* RAG Baseline Execution */}
+            <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-4 space-y-1">
+              <div className="flex items-center justify-between text-slate-400 text-xs">
+                <span>{getSystemDisplayName(runResult.protocol.rag_system_name)}</span>
+                <BarChart3 className="h-3.5 w-3.5 text-amber-400" />
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-bold text-white">
+                  {ragSuccessCount} / {totalCases}
+                </span>
+                <span className="text-xs font-semibold text-amber-400">
+                  {totalCases > 0 ? `${Math.round((ragSuccessCount / totalCases) * 100)}%` : '0%'} completed
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500">
+                Avg Latency: {avgRagLatency}ms &bull; Top-{runResult.protocol.top_k_chunks} BM25 Chunks
+              </div>
+            </div>
           </div>
-          <div className="text-[11px] text-slate-500">Vector search + context packing</div>
-        </div>
-      </div>
 
-      {/* Category Filter */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Filter className="h-3.5 w-3.5 text-slate-400" />
-          <span className="text-xs font-medium text-slate-300">Filter Question Category:</span>
-        </div>
+          {/* D. Category Breakdown Table */}
+          <div className="rounded-xl border border-slate-800 bg-[#0f1822] overflow-hidden">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Execution Counts & Latency by Category</h2>
+                <p className="text-xs text-slate-400">
+                  Derived directly from {totalCases} benchmark case records.
+                </p>
+              </div>
+            </div>
 
-        <div className="flex flex-wrap gap-1.5">
-          {['ALL', 'Path Existence', 'No-Path Negative', 'Architectural Exposure', 'Deterministic Ranking', 'Remediation'].map(
-            (cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
-                  selectedCategory === cat
-                    ? 'bg-sky-500 text-white'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-              >
-                {cat}
-              </button>
-            ),
-          )}
-        </div>
-      </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-900/60 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                  <tr>
+                    <th scope="col" className="px-4 py-3">Category</th>
+                    <th scope="col" className="px-4 py-3 text-center">Cases</th>
+                    <th scope="col" className="px-4 py-3">Graph Agent Completed</th>
+                    <th scope="col" className="px-4 py-3">Graph Avg Latency</th>
+                    <th scope="col" className="px-4 py-3">RAG Baseline Completed</th>
+                    <th scope="col" className="px-4 py-3">RAG Avg Latency</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {categoryMetrics.map((row) => (
+                    <tr key={row.categoryKey} className="hover:bg-slate-800/20 transition">
+                      <td className="px-4 py-3 font-medium text-white">
+                        {row.displayName}
+                        <div className="text-[10px] text-slate-500 font-mono">{row.categoryKey}</div>
+                      </td>
+                      <td className="px-4 py-3 text-center text-slate-300 font-mono font-semibold">
+                        {row.totalCases}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 font-semibold text-emerald-400">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span>{row.graphSuccess} / {row.totalCases}</span>
+                          {row.graphFailed > 0 && (
+                            <span className="text-rose-400 text-[10px]">({row.graphFailed} failed)</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-slate-300">
+                        {row.graphAvgDurationMs}ms
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 font-semibold text-amber-400">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span>{row.ragSuccess} / {row.totalCases}</span>
+                          {row.ragFailed > 0 && (
+                            <span className="text-rose-400 text-[10px]">({row.ragFailed} failed)</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-slate-300">
+                        {row.ragAvgDurationMs}ms
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-      {/* Benchmark Questions Table */}
-      <div className="rounded-xl border border-slate-800 bg-[#0f1822] shadow-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-slate-800 bg-slate-900/60 font-semibold text-slate-400">
-              <tr>
-                <th className="py-3 px-4">ID</th>
-                <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4">Evaluation Question</th>
-                <th className="py-3 px-4">Ground Truth Answer</th>
-                <th className="py-3 px-3 text-center">Graph Agent</th>
-                <th className="py-3 px-3 text-center">RAG Baseline</th>
-                <th className="py-3 px-4">Findings & Reason</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/80 text-slate-300">
-              {filteredQuestions.map((q) => (
-                <tr key={q.id} className="hover:bg-slate-800/30 transition-colors">
-                  <td className="py-3 px-4 font-mono font-bold text-sky-400">{q.id}</td>
-                  <td className="py-3 px-4">
-                    <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
-                      {q.category}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 font-medium text-white max-w-xs">{q.question}</td>
-                  <td className="py-3 px-4 text-slate-300 font-mono text-[11px] max-w-xs">
-                    {q.groundTruth}
-                  </td>
-                  <td className="py-3 px-3 text-center">
-                    {q.graphOutcome === 'PASS' ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 font-bold text-emerald-300 text-[11px]">
-                        <CheckCircle2 className="h-3 w-3" /> PASS ({q.graphLatencyMs}ms)
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded bg-red-500/15 border border-red-500/30 px-2 py-0.5 font-bold text-red-300 text-[11px]">
-                        <XCircle className="h-3 w-3" /> FAIL
-                      </span>
+          {/* E. Per-Case Inspection Section */}
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-slate-400" />
+                <h2 className="text-sm font-semibold text-white">Case-by-Case Investigation Evidence</h2>
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex flex-wrap gap-1.5">
+                {['ALL', 'path_exists', 'no_path', 'exposure', 'ranking', 'remediation'].map((catKey) => {
+                  const label = catKey === 'ALL' ? 'All Categories' : getCategoryDisplayName(catKey)
+                  const isSelected = selectedCategory === catKey
+                  return (
+                    <button
+                      key={catKey}
+                      type="button"
+                      onClick={() => setSelectedCategory(catKey)}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
+                        isSelected
+                          ? 'bg-sky-500 text-white font-semibold'
+                          : 'bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-700/80'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Case List */}
+            <div className="space-y-2.5">
+              {filteredCases.map((c) => {
+                const isExpanded = expandedCaseId === c.case_id
+
+                return (
+                  <div
+                    key={c.case_id}
+                    className="rounded-xl border border-slate-800 bg-[#0f1822] overflow-hidden transition"
+                  >
+                    {/* Collapsible Header */}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedCaseId(isExpanded ? null : c.case_id)}
+                      className="w-full p-4 flex items-start justify-between text-left hover:bg-slate-800/20 transition cursor-pointer"
+                    >
+                      <div className="space-y-1 pr-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-sky-400">{c.case_id}</span>
+                          <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300 font-medium">
+                            {getCategoryDisplayName(c.category)}
+                          </span>
+                          <span className="text-[10px] text-slate-500 uppercase">{c.difficulty}</span>
+                        </div>
+                        <p className="text-xs font-medium text-white">{c.question}</p>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-slate-400 text-[11px]">Graph:</span>
+                          {c.graph_result.status === 'success' ? (
+                            <span className="text-emerald-400 font-mono text-[11px] font-semibold">
+                              {c.graph_result.duration_ms}ms
+                            </span>
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5 text-rose-400" />
+                          )}
+
+                          <span className="text-slate-400 text-[11px] ml-1">RAG:</span>
+                          {c.rag_result.status === 'success' ? (
+                            <span className="text-amber-400 font-mono text-[11px] font-semibold">
+                              {c.rag_result.duration_ms}ms
+                            </span>
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5 text-rose-400" />
+                          )}
+                        </div>
+
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4 text-slate-400" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-slate-400" />
+                        )}
+                      </div>
+                    </button>
+
+                    {/* Expanded Detail Inspection */}
+                    {isExpanded && (
+                      <div className="p-4 border-t border-slate-800/80 bg-slate-900/40 space-y-4 text-xs">
+                        {/* Ground Truth Expected Conclusion */}
+                        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 space-y-1">
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Verified Expected Ground Truth (US-801)
+                          </span>
+                          <p className="text-slate-200 leading-relaxed">{c.expected_conclusion}</p>
+                        </div>
+
+                        {/* Side-by-Side Comparison */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Vulnify Graph Agent Output */}
+                          <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/10 p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                <span>Vulnify Graph Agent</span>
+                              </span>
+                              <span className="font-mono text-[11px] text-slate-400">
+                                {c.graph_result.duration_ms}ms
+                              </span>
+                            </div>
+
+                            {/* Safe text rendering */}
+                            <div className="text-slate-300 whitespace-pre-wrap leading-relaxed text-[11px] bg-black/20 rounded p-2.5">
+                              {c.graph_result.answer || 'No answer generated.'}
+                            </div>
+
+                            {/* Evidence References */}
+                            {c.graph_result.evidence_references?.length > 0 && (
+                              <div className="text-[10px] text-slate-400 space-y-1">
+                                <span className="text-slate-500 font-medium">Evidence Citations:</span>
+                                <div className="flex flex-wrap gap-1 font-mono">
+                                  {c.graph_result.evidence_references.map((ref, idx) => (
+                                    <span key={idx} className="bg-slate-800/80 px-1.5 py-0.5 rounded text-slate-300">
+                                      {ref}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* RAG Baseline Output */}
+                          <div className="rounded-lg border border-amber-500/20 bg-amber-950/10 p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-amber-400 flex items-center gap-1.5">
+                                <BarChart3 className="h-3.5 w-3.5" />
+                                <span>RAG Baseline (BM25 Chunks)</span>
+                              </span>
+                              <span className="font-mono text-[11px] text-slate-400">
+                                {c.rag_result.duration_ms}ms
+                              </span>
+                            </div>
+
+                            {/* Safe text rendering */}
+                            <div className="text-slate-300 whitespace-pre-wrap leading-relaxed text-[11px] bg-black/20 rounded p-2.5">
+                              {c.rag_result.answer || 'No answer generated.'}
+                            </div>
+
+                            {/* Evidence References */}
+                            {c.rag_result.evidence_references?.length > 0 && (
+                              <div className="text-[10px] text-slate-400 space-y-1">
+                                <span className="text-slate-500 font-medium">Retrieved Chunks:</span>
+                                <div className="flex flex-wrap gap-1 font-mono">
+                                  {c.rag_result.evidence_references.map((ref, idx) => (
+                                    <span key={idx} className="bg-slate-800/80 px-1.5 py-0.5 rounded text-slate-300">
+                                      {ref}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     )}
-                  </td>
-                  <td className="py-3 px-3 text-center">
-                    {q.ragOutcome === 'PASS' ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 font-bold text-emerald-300 text-[11px]">
-                        <CheckCircle2 className="h-3 w-3" /> PASS
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 font-bold text-amber-300 text-[11px]">
-                        <XCircle className="h-3 w-3" /> FAIL
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 text-slate-400 text-[11px] max-w-xs">{q.notes}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

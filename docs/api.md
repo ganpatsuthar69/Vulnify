@@ -2411,3 +2411,101 @@ Lists all GitHub issues created for findings in the specified project.
   ```
 - **Status Codes**:
   - `200 OK`: Successful retrieval.
+
+---
+
+### 34. `GET /api/benchmarks/results/latest`
+- **Description**: Retrieve the most recent benchmark comparison run result between Vulnify Graph Agent and RAG Baseline. Returns `404 Not Found` if no benchmark run has been completed yet (supporting the US-803 "no results yet" empty state).
+- **Authentication**: None.
+- **Response**: `200 OK` (returns `BenchmarkRunResult` conforming to `benchmarks/results_schema.json`)
+  ```json
+  {
+    "run_id": "run-20261018-090000",
+    "dataset_version": "1.0.0",
+    "started_at": "2026-10-18T09:00:00Z",
+    "completed_at": "2026-10-18T09:01:15Z",
+    "protocol": {
+      "llm_provider": "openai",
+      "llm_model": "gpt-4o-mini",
+      "temperature": 0.0,
+      "graph_system": "Vulnify Graph Agent",
+      "rag_system": "Lexical BM25 Baseline",
+      "corpus_doc_count": 25,
+      "rag_top_k": 3
+    },
+    "summary": {
+      "total_cases": 20,
+      "graph_success_count": 20,
+      "rag_success_count": 18,
+      "graph_avg_duration_ms": 245.5,
+      "rag_avg_duration_ms": 112.3
+    },
+    "cases": []
+  }
+  ```
+- **Status Codes**:
+  - `200 OK`: Latest run found and returned.
+  - `404 Not Found`: No benchmark runs exist yet (`latest_run.json` not found). The client renders the empty state.
+  - `500 Internal Server Error`: Failed to parse results artifact.
+
+---
+
+### 35. `GET /api/benchmarks/results`
+- **Description**: List all historical benchmark comparison run artifacts with high-level metadata (run ID, timestamps, total cases, success counts).
+- **Authentication**: None.
+- **Response**: `200 OK`
+  ```json
+  [
+    {
+      "filename": "benchmark_run_20261018_112640.json",
+      "run_id": "run-20261018-112640",
+      "created_at": "2026-10-18T11:26:40Z",
+      "dataset_version": "1.0.0",
+      "total_cases": 20,
+      "graph_success_count": 20,
+      "rag_success_count": 20
+    }
+  ]
+  ```
+- **Status Codes**:
+  - `200 OK`: Successful retrieval.
+
+---
+
+### 36. `GET /api/benchmarks/results/run/{filename}`
+- **Description**: Retrieve a specific historical benchmark comparison run result by its sanitized filename.
+- **Authentication**: None.
+- **Path Parameters**:
+  - `filename` (string, required): Clean artifact filename (e.g. `benchmark_run_20261018_112640.json`).
+- **Response**: `200 OK` (returns full `BenchmarkRunResult`).
+- **Status Codes**:
+  - `200 OK`: Specified run artifact found.
+  - `400 Bad Request`: Malformed or directory-traversal filename.
+  - `404 Not Found`: File not found in `benchmarks/results/`.
+  - `500 Internal Server Error`: Parsing failure.
+
+---
+
+### 37. `POST /api/benchmarks/run`
+- **Description**: Trigger a reproducible, single-command comparison execution between Vulnify Graph Agent and RAG Baseline under identical models and evidence corpora.
+- **Authentication**: None.
+- **Request Body**:
+  ```json
+  {
+    "category": "path_exists",
+    "dry_run": false,
+    "llm_provider": "auto",
+    "llm_model": "gpt-4o-mini",
+    "temperature": 0.0
+  }
+  ```
+  - `category` (string, optional): Restrict execution to a single category (`path_exists`, `no_path`, `exposure`, `ranking`, `remediation`). If omitted, runs all categories.
+  - `dry_run` (boolean, optional): If `true`, runs harness verification without live LLM calls. Default `false`.
+  - `llm_provider` (string, optional): LLM provider (`auto`, `openai`, `gemini`, `deterministic_test`). Default `"auto"`.
+  - `llm_model` (string, optional): Model identifier. Default `"gpt-4o-mini"`.
+  - `temperature` (number, optional): Generation temperature. Default `0.0`.
+- **Response**: `200 OK` (returns completed `BenchmarkRunResult`).
+- **Status Codes**:
+  - `200 OK`: Comparison run completed successfully.
+  - `500 Internal Server Error`: Execution failed.
+

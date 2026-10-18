@@ -194,3 +194,26 @@ The harness outputs structured JSON conforming to `benchmarks/results_schema.jso
 
 The latest run is atomically written to `benchmarks/results/latest_run.json`, with historical snapshots archived as `benchmarks/results/benchmark_run_{timestamp}.json`.
 
+---
+
+## 9. Benchmark Results Page (US-803)
+
+The Vulnify frontend provides an interactive, honest Benchmark Results interface at `/benchmarks` for hackathon reviewers and auditors to inspect real experimental data.
+
+### Key Capabilities & Architectural Safeguards
+1. **Zero Hardcoded Metrics:** Every count, percentage, latency, category total, model name, and timestamp displayed on the page is dynamically computed from real JSON run records (`BenchmarkRunResult`) loaded via `GET /api/benchmarks/results/latest` or historical runs via `GET /api/benchmarks/results/run/{filename}`.
+2. **Transparent "No Results Yet" State (AC2):**
+   - If no benchmark run has been completed yet, the API returns `404 Not Found`.
+   - The frontend renders a clean empty state with clear instructions on how to generate results via the single CLI command (`python -m vulnify.benchmarks.runner`) or the in-app "Run Benchmark Suite" action.
+   - Placeholder or simulated numbers are **never** presented as measured facts.
+3. **Explicit Small Sample Size Notice (AC1):**
+   - The page prominently features a disclaimer banner emphasizing the small sample size (`N = 20` curated test cases).
+   - Results are presented strictly as directional comparisons across the 5 categories rather than statistical proofs of universal superiority.
+4. **Execution Status vs. Evaluated Score Honesty:**
+   - Completed cases (`status === 'success'`) are labeled as **"Completed (No Faults)"** to accurately reflect error-free runtime execution, avoiding misleading conflation with ground-truth semantic accuracy.
+5. **Interactive Inspection:**
+   - Filter cases by category (`path_exists`, `no_path`, `exposure`, `ranking`, `remediation`).
+   - Side-by-side cards comparing Graph Agent and RAG answers, latencies, and retrieved evidence citations.
+   - Historical run selector dropdown to review previous evaluation runs.
+
+
