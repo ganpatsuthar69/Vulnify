@@ -153,8 +153,44 @@ backend\.venv\Scripts\pytest.exe backend/tests/test_benchmarks.py
 
 ---
 
-## 8. Future Evaluation Harness Integration (US-802 / US-803)
+## 8. Evaluation Harness and RAG Baseline (US-802)
 
-This dataset serves as the immutable ground truth for:
-- **US-802 (RAG Baseline & Harness):** The evaluation runner loads `benchmarks/benchmark_dataset.json`, feeds each question to both Vulnify Graph Agent and a standard Vector RAG baseline, and evaluates accuracy against `expected_answer.required_evidence` and `expected_answer.forbidden_claims`.
-- **US-803 (Benchmark Results Page):** The frontend reads real evaluation run JSON outputs and renders category-by-category comparative performance metrics.
+Vulnify implements a strictly fair, controlled experimental harness comparing the Graph-Powered Security Agent with a Retrieval-Augmented Generation (RAG) baseline.
+
+### Experimental Fairness Protocol
+1. **Shared Evidence Corpus (`benchmarks/evidence_corpus.json`):** Both systems draw from the exact same raw repository artifacts (service manifests, lockfiles, topology configurations, OSV advisories, and scoring specifications).
+2. **Identical Language Model Client:** Both systems execute against the exact same language model (`gpt-4o-mini`, provider auto-selection, temperature `0.0`, identical generation constraints).
+3. **Contrasting Retrieval Architectures:**
+   - **Vulnify Graph Agent:** Traverses structured FalkorDB graph topology, executing bounded Cypher traversals (`*1..8`) and deterministic Priority Policy v1.0.0.
+   - **RAG Baseline:** Uses BM25 lexical token-matching to retrieve top-$k$ text chunks without topology or relational links.
+
+### Running the Comparison Harness (Single Command)
+From the repository root:
+
+```powershell
+$env:PYTHONPATH="backend/src"
+backend\.venv\Scripts\python.exe -m vulnify.benchmarks.runner
+```
+
+#### CLI Options
+```
+--dataset PATH       Path to benchmark dataset (default: benchmarks/benchmark_dataset.json)
+--corpus PATH        Path to evidence corpus (default: benchmarks/evidence_corpus.json)
+--output PATH        Target output JSON file (default: benchmarks/results/latest_run.json)
+--category CAT       Filter by category (path_exists, no_path, exposure, ranking, remediation)
+--cases ID1,ID2      Comma-separated case IDs to evaluate (e.g. BM-001,BM-002)
+--llm-provider NAME  Provider override (auto, openai, gemini, deterministic_test)
+--llm-model NAME     Model name override (default: gpt-4o-mini)
+--temperature FLOAT  Sampling temperature (default: 0.0)
+--dry-run            Simulate execution without LLM calls
+--quiet              Suppress per-case execution logging
+```
+
+### JSON Results Output
+The harness outputs structured JSON conforming to `benchmarks/results_schema.json` containing:
+- `protocol`: Full specification of the shared model, temperature, and retrieval parameters.
+- `summary`: Overall and per-category accuracy, latency, and success rates.
+- `cases`: Side-by-side execution trace for each case (graph result, rag result, and evaluation score).
+
+The latest run is atomically written to `benchmarks/results/latest_run.json`, with historical snapshots archived as `benchmarks/results/benchmark_run_{timestamp}.json`.
+
