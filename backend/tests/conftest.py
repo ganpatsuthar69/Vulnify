@@ -15,6 +15,11 @@ from vulnify.graph.agent_run_repository import (
     set_agent_run_repository_override,
 )
 from vulnify.graph.dependency_repository import InMemoryDependencyRepository, get_dependency_repository
+from vulnify.graph.github_config_repository import (
+    InMemoryGitHubConfigRepository,
+    get_github_config_repository,
+    set_github_config_repository_override,
+)
 from vulnify.graph.job_repository import InMemoryIngestionJobRepository, get_job_repository
 from vulnify.graph.project_repository import InMemoryProjectRepository, get_project_repository
 from vulnify.graph.user_repository import InMemoryUserRepository, get_user_repository
@@ -99,6 +104,11 @@ def mock_agent_run_repo() -> InMemoryAgentRunRepository:
 
 
 @pytest.fixture
+def mock_github_config_repo() -> InMemoryGitHubConfigRepository:
+    return InMemoryGitHubConfigRepository()
+
+
+@pytest.fixture
 def app(
     test_settings: Settings,
     mock_user_repo: InMemoryUserRepository,
@@ -108,6 +118,7 @@ def app(
     mock_vuln_repo: InMemoryVulnerabilityRepository,
     mock_job_repo: InMemoryIngestionJobRepository,
     mock_agent_run_repo: InMemoryAgentRunRepository,
+    mock_github_config_repo: InMemoryGitHubConfigRepository,
 ) -> FastAPI:
     test_app = create_app(settings=test_settings)
     test_app.dependency_overrides[get_settings] = lambda: test_settings
@@ -118,6 +129,7 @@ def app(
     test_app.dependency_overrides[get_vulnerability_repository] = lambda: mock_vuln_repo
     test_app.dependency_overrides[get_job_repository] = lambda: mock_job_repo
     test_app.dependency_overrides[get_agent_run_repository] = lambda: mock_agent_run_repo
+    test_app.dependency_overrides[get_github_config_repository] = lambda: mock_github_config_repo
     return test_app
 
 
@@ -130,6 +142,7 @@ def reset_state(
     mock_vuln_repo: InMemoryVulnerabilityRepository,
     mock_job_repo: InMemoryIngestionJobRepository,
     mock_agent_run_repo: InMemoryAgentRunRepository,
+    mock_github_config_repo: InMemoryGitHubConfigRepository,
 ) -> None:
     login_rate_limiter.reset()
     mock_user_repo.clear()
@@ -144,8 +157,10 @@ def reset_state(
     mock_vuln_repo.findings_override.clear()
     mock_job_repo._jobs.clear()
     mock_agent_run_repo.clear()
+    mock_github_config_repo.clear()
     set_vulnerability_repository_override(mock_vuln_repo)
     set_agent_run_repository_override(mock_agent_run_repo)
+    set_github_config_repository_override(mock_github_config_repo)
     from vulnify.agent.orchestrator import set_agent_orchestrator
     set_agent_orchestrator(None)
     from vulnify.services.github_service import reset_github_state

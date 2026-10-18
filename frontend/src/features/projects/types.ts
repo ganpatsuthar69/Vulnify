@@ -721,6 +721,53 @@ export interface GitHubIntegrationStatusResponse {
   api_base_url: string
 }
 
+// =====================================================================
+// US-506: GitHub Integration Admin Configuration Types
+// =====================================================================
+
+export interface GitHubConfigResponse {
+  configured: boolean
+  owner: string
+  repo: string
+  target_repo: string
+  has_token: boolean
+  api_base_url: string
+  validation_status?: string | null
+  validation_message?: string | null
+  last_validated_at?: number | null
+  updated_at?: number | null
+  updated_by?: string | null
+  project_id?: string | null
+}
+
+export interface GitHubConfigUpdateRequest {
+  owner: string
+  repo: string
+  token?: string | null
+  api_base_url?: string | null
+  project_id?: string | null
+  validate_before_save?: boolean
+}
+
+export interface GitHubConfigValidateRequest {
+  owner: string
+  repo: string
+  token?: string | null
+  project_id?: string | null
+}
+
+export interface GitHubValidationResult {
+  valid: boolean
+  status: string
+  message: string
+  owner: string
+  repo: string
+  target_repo: string
+  has_issues_enabled: boolean
+  has_write_access: boolean
+  checked_at: number
+}
+
 export interface GitHubIssuePreviewRequest {
   title_override?: string | null
   body_override?: string | null

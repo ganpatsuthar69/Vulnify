@@ -4,6 +4,7 @@ import {
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react'
+import { GitHubAdminConfigCard } from './GitHubAdminConfigCard'
 
 interface IntegrationStatus {
   name: string
@@ -170,6 +171,9 @@ export function IntegrationsPage() {
           </div>
         ))}
       </div>
+
+      {/* GitHub Integration Admin Configuration UI (US-506) */}
+      <GitHubAdminConfigCard />
     </div>
   )
 }

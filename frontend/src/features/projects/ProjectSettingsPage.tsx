@@ -7,6 +7,7 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { useProjects } from '@/features/projects/ProjectProvider'
+import { GitHubAdminConfigCard } from '@/features/administration/GitHubAdminConfigCard'
 
 export function ProjectSettingsPage() {
   const { activeProject } = useProjects()
@@ -144,6 +145,12 @@ export function ProjectSettingsPage() {
           )}
         </div>
       </div>
+
+      {/* GitHub Integration Admin Configuration (US-506) */}
+      <GitHubAdminConfigCard
+        projectId={activeProject.id}
+        projectName={activeProject.name}
+      />
     </div>
   )
 }

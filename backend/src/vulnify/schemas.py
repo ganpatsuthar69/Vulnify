@@ -771,6 +771,54 @@ class GitHubIntegrationStatusResponse(BaseModel):
     api_base_url: str = Field(..., description="Configured GitHub API base URL")
 
 
+# =====================================================================
+# US-506: GitHub Integration Admin Configuration Schemas
+# =====================================================================
+
+
+class GitHubConfigResponse(BaseModel):
+    configured: bool = Field(..., description="True if target repository and credentials are configured")
+    owner: str = Field(..., description="Configured repository owner or organization")
+    repo: str = Field(..., description="Configured repository name")
+    target_repo: str = Field(..., description="Target repository in owner/repo format")
+    has_token: bool = Field(..., description="True if a personal access token is configured (token is never returned)")
+    api_base_url: str = Field(..., description="Configured GitHub API base URL")
+    validation_status: str | None = Field(default=None, description="Last recorded validation status ('valid', 'invalid', 'unconfigured', etc.)")
+    validation_message: str | None = Field(default=None, description="Details or error explanation from last validation")
+    last_validated_at: int | None = Field(default=None, description="Timestamp of last validation check")
+    updated_at: int | None = Field(default=None, description="Timestamp when configuration was last updated")
+    updated_by: str | None = Field(default=None, description="Admin email who updated the configuration")
+    project_id: str | None = Field(default=None, description="Project ID if configuration is project-scoped, or null for global")
+
+
+class GitHubConfigUpdateRequest(BaseModel):
+    owner: str = Field(..., min_length=1, max_length=100, description="GitHub repository owner or organization")
+    repo: str = Field(..., min_length=1, max_length=100, description="GitHub repository name")
+    token: str | None = Field(default=None, description="Optional GitHub Personal Access Token (for rotation/creation; omit to keep existing)")
+    api_base_url: str | None = Field(default=None, description="GitHub API base URL (defaults to https://api.github.com)")
+    project_id: str | None = Field(default=None, description="Optional project ID for project-scoped configuration")
+    validate_before_save: bool = Field(default=True, description="Whether to validate repository access against GitHub permissions before saving")
+
+
+class GitHubConfigValidateRequest(BaseModel):
+    owner: str = Field(..., min_length=1, max_length=100, description="GitHub repository owner or organization")
+    repo: str = Field(..., min_length=1, max_length=100, description="GitHub repository name")
+    token: str | None = Field(default=None, description="Optional GitHub Personal Access Token (if empty, uses currently configured token)")
+    project_id: str | None = Field(default=None, description="Optional project ID to check project-scoped token")
+
+
+class GitHubValidationResultResponse(BaseModel):
+    valid: bool = Field(..., description="True if owner, repo, and token passed validation")
+    status: str = Field(..., description="Validation status code ('valid', 'unauthorized', 'not_found', 'insufficient_permissions', etc.)")
+    message: str = Field(..., description="Clear human-readable validation explanation")
+    owner: str = Field(..., description="Validated repository owner")
+    repo: str = Field(..., description="Validated repository name")
+    target_repo: str = Field(..., description="Validated target repository (owner/repo)")
+    has_issues_enabled: bool = Field(default=True, description="True if issues are enabled on the target repository")
+    has_write_access: bool = Field(default=True, description="True if token has write or issues permission")
+    checked_at: int = Field(..., description="UTC timestamp of the validation check")
+
+
 class GitHubIssuePreviewRequest(BaseModel):
     target_repo: str | None = Field(default=None, description="Optional target repository override (owner/repo)")
     target_version: str | None = Field(default=None, description="Optional remediation target version from US-401/US-501")

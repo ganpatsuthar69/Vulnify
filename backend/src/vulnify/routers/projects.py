@@ -8,7 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from vulnify.config import Settings, get_settings
-from vulnify.dependencies import get_valid_project, require_auth
+from vulnify.dependencies import get_valid_project, require_admin, require_auth
 from vulnify.graph.advisory_repository import IAdvisoryRepository, get_advisory_repository
 from vulnify.graph.dependency_repository import IDependencyRepository, get_dependency_repository
 from vulnify.graph.job_repository import IIngestionJobRepository, get_job_repository
@@ -62,6 +62,10 @@ from vulnify.schemas import (
     SimulationResponse,
     SimulationListResponse,
     GitHubIntegrationStatusResponse,
+    GitHubConfigResponse,
+    GitHubConfigUpdateRequest,
+    GitHubConfigValidateRequest,
+    GitHubValidationResultResponse,
     GitHubIssuePreviewRequest,
     GitHubIssuePreviewResponse,
     GitHubIssueCreateRequest,
@@ -1326,7 +1330,71 @@ async def get_github_status(
     github_service: GitHubService = Depends(get_github_service),
 ) -> GitHubIntegrationStatusResponse:
     """Retrieve GitHub integration configuration status and default target repository."""
-    return github_service.get_status()
+    return github_service.get_status(project.id)
+
+
+@router.get(
+    "/{project_id}/github/config",
+    response_model=GitHubConfigResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get project GitHub integration configuration (US-506)",
+)
+async def get_project_github_config(
+    project_id: str,
+    current_user: UserResponse = Depends(require_auth),
+    project: ProjectRecord = Depends(get_valid_project),
+    github_service: GitHubService = Depends(get_github_service),
+) -> GitHubConfigResponse:
+    """Retrieve current non-sensitive GitHub configuration for this workspace."""
+    return github_service.get_config(project.id)
+
+
+@router.put(
+    "/{project_id}/github/config",
+    response_model=GitHubConfigResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update project GitHub integration configuration (US-506)",
+)
+async def update_project_github_config(
+    project_id: str,
+    body: GitHubConfigUpdateRequest,
+    current_user: UserResponse = Depends(require_admin),
+    project: ProjectRecord = Depends(get_valid_project),
+    github_service: GitHubService = Depends(get_github_service),
+) -> GitHubConfigResponse:
+    """Update and validate target repository configuration for this project (admin only)."""
+    return await github_service.update_config(
+        owner=body.owner,
+        repo=body.repo,
+        token=body.token,
+        api_base_url=body.api_base_url,
+        project_id=project.id,
+        validate_before_save=body.validate_before_save,
+        current_user=current_user,
+    )
+
+
+@router.post(
+    "/{project_id}/github/validate",
+    response_model=GitHubValidationResultResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Validate project GitHub target repository access (US-506)",
+)
+async def validate_project_github_config(
+    project_id: str,
+    body: GitHubConfigValidateRequest,
+    current_user: UserResponse = Depends(require_admin),
+    project: ProjectRecord = Depends(get_valid_project),
+    github_service: GitHubService = Depends(get_github_service),
+) -> GitHubValidationResultResponse:
+    """Test repository access and write permissions against GitHub REST API (admin only)."""
+    return await github_service.validate_target_repo_access(
+        owner=body.owner,
+        repo=body.repo,
+        token=body.token,
+        project_id=project.id,
+    )
+
 
 
 @router.post(

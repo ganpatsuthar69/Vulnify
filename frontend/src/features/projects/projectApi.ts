@@ -29,6 +29,10 @@ import type {
   SimulationResponse,
   SimulationListResponse,
   GitHubIntegrationStatusResponse,
+  GitHubConfigResponse,
+  GitHubConfigUpdateRequest,
+  GitHubConfigValidateRequest,
+  GitHubValidationResult,
   GitHubIssuePreviewRequest,
   GitHubIssuePreviewResponse,
   GitHubIssueCreateRequest,
@@ -1674,6 +1678,141 @@ export async function getGitHubStatus(
 
   await handleErrorResponse(response)
   throw new ProjectApiError('Failed to fetch GitHub integration status.', { status: response.status })
+}
+
+export async function getGitHubConfig(projectId?: string): Promise<GitHubConfigResponse> {
+  if (isMockMode()) {
+    return {
+      configured: true,
+      owner: 'vulnify',
+      repo: 'demo-workspace',
+      target_repo: 'vulnify/demo-workspace',
+      has_token: true,
+      api_base_url: 'https://api.github.com',
+      validation_status: 'valid',
+      validation_message: 'Mock integration active and healthy',
+      last_validated_at: Math.floor(Date.now() / 1000) - 300,
+      updated_at: Math.floor(Date.now() / 1000) - 3600,
+      updated_by: 'admin@vulnify.local',
+      project_id: projectId || null,
+    }
+  }
+
+  const url = projectId
+    ? `/api/projects/${encodeURIComponent(projectId)}/github/config`
+    : '/api/admin/github-config'
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Requested-With': 'vulnify',
+      },
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as GitHubConfigResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to fetch GitHub configuration.', { status: response.status })
+}
+
+export async function updateGitHubConfig(
+  data: GitHubConfigUpdateRequest,
+): Promise<GitHubConfigResponse> {
+  if (isMockMode()) {
+    return {
+      configured: true,
+      owner: data.owner,
+      repo: data.repo,
+      target_repo: `${data.owner}/${data.repo}`,
+      has_token: Boolean(data.token) || true,
+      api_base_url: data.api_base_url || 'https://api.github.com',
+      validation_status: 'valid',
+      validation_message: `Repository '${data.owner}/${data.repo}' verified and saved in mock mode.`,
+      last_validated_at: Math.floor(Date.now() / 1000),
+      updated_at: Math.floor(Date.now() / 1000),
+      updated_by: 'admin@vulnify.local',
+      project_id: data.project_id || null,
+    }
+  }
+
+  const url = data.project_id
+    ? `/api/projects/${encodeURIComponent(data.project_id)}/github/config`
+    : '/api/admin/github-config'
+  const method = data.project_id ? 'PUT' : 'POST'
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'vulnify',
+      },
+      body: JSON.stringify(data),
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as GitHubConfigResponse
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to update GitHub configuration.', { status: response.status })
+}
+
+export async function validateGitHubConfig(
+  data: GitHubConfigValidateRequest,
+): Promise<GitHubValidationResult> {
+  if (isMockMode()) {
+    return {
+      valid: true,
+      status: 'valid',
+      message: `Successfully connected to repository '${data.owner}/${data.repo}'. Token has permissions to create remediation issues (Mock Mode).`,
+      owner: data.owner,
+      repo: data.repo,
+      target_repo: `${data.owner}/${data.repo}`,
+      has_issues_enabled: true,
+      has_write_access: true,
+      checked_at: Math.floor(Date.now() / 1000),
+    }
+  }
+
+  const url = data.project_id
+    ? `/api/projects/${encodeURIComponent(data.project_id)}/github/validate`
+    : '/api/admin/github-config/validate'
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'vulnify',
+      },
+      body: JSON.stringify(data),
+    })
+  } catch {
+    throw new ProjectApiError('Cannot reach the server.', { isNetworkError: true })
+  }
+
+  if (response.status === 200) {
+    return (await response.json()) as GitHubValidationResult
+  }
+
+  await handleErrorResponse(response)
+  throw new ProjectApiError('Failed to validate GitHub configuration.', { status: response.status })
 }
 
 export async function previewGitHubIssue(

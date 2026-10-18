@@ -26,20 +26,30 @@ from vulnify.agent.trust_boundary import (
     verify_issue_body_structure,
 )
 from vulnify.config import Settings, get_settings
+from vulnify.graph.github_config_repository import (
+    GitHubConfigRecord,
+    IGitHubConfigRepository,
+    get_github_config_repository,
+)
 from vulnify.graph.vulnerability_repository import (
     IVulnerabilityRepository,
     get_vulnerability_repository,
 )
 from vulnify.logging import get_request_id
 from vulnify.schemas import (
+    GitHubConfigResponse,
+    GitHubConfigUpdateRequest,
+    GitHubConfigValidateRequest,
     GitHubIntegrationStatusResponse,
     GitHubIssueCreateRequest,
     GitHubIssueListResponse,
     GitHubIssuePreviewRequest,
     GitHubIssuePreviewResponse,
     GitHubIssueRecordResponse,
+    GitHubValidationResultResponse,
     UserResponse,
 )
+from vulnify.security import decrypt_secret, encrypt_secret
 
 logger = logging.getLogger("vulnify")
 
@@ -64,6 +74,10 @@ def reset_github_state() -> None:
     _attempt_state_by_hash.clear()
     _audit_trail.clear()
     _creation_locks.clear()
+    try:
+        get_github_config_repository().clear()
+    except Exception:
+        pass
 
 
 def compute_plan_hash(
@@ -94,33 +108,382 @@ class GitHubService:
         self,
         settings: Settings | None = None,
         repo: IVulnerabilityRepository | None = None,
+        config_repo: IGitHubConfigRepository | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.repo = repo or get_vulnerability_repository()
+        self.config_repo = config_repo or get_github_config_repository()
         self.http_client = http_client
 
-    def is_configured(self) -> bool:
-        """Check whether GitHub integration credentials are configured."""
-        token = self.settings.GITHUB_TOKEN
-        return bool(token and token.strip())
+    def get_effective_config(
+        self, project_id: str | None = None
+    ) -> tuple[str, str, str | None, str, str | None, str | None, int | None, int | None, str | None]:
+        """Resolve effective GitHub configuration (project-specific override -> global config -> environment settings).
 
-    def get_default_target_repo(self) -> str:
-        """Get default target repository in owner/repo format."""
+        Returns:
+            (owner, repo, effective_token, api_base_url, validation_status, validation_message, last_validated_at, updated_at, updated_by)
+        """
+        record: GitHubConfigRecord | None = None
+        if project_id:
+            record = self.config_repo.get_config(project_id)
+        if not record:
+            record = self.config_repo.get_config("global")
+
+        if record:
+            owner = record.owner.strip()
+            repo_name = record.repo.strip()
+            api_base = record.api_base_url or self.settings.GITHUB_API_BASE_URL
+            token: str | None = None
+            if record.encrypted_token:
+                try:
+                    token = decrypt_secret(record.encrypted_token, self.settings.SESSION_SECRET)
+                except Exception as exc:
+                    logger.warning("Failed to decrypt stored GitHub token: %s", exc)
+                    token = None
+            if not token and self.settings.GITHUB_TOKEN:
+                token = self.settings.GITHUB_TOKEN.strip()
+
+            return (
+                owner,
+                repo_name,
+                token,
+                api_base,
+                record.validation_status,
+                record.validation_message,
+                record.last_validated_at,
+                record.updated_at,
+                record.updated_by,
+            )
+
         owner = (self.settings.GITHUB_DEFAULT_OWNER or "vulnify").strip()
         repo_name = (self.settings.GITHUB_DEFAULT_REPO or "demo-workspace").strip()
+        token = self.settings.GITHUB_TOKEN.strip() if self.settings.GITHUB_TOKEN else None
+        api_base = self.settings.GITHUB_API_BASE_URL
+        has_token = bool(token and token.strip())
+        val_status = "configured" if has_token else "unconfigured"
+        val_msg = None if has_token else "GitHub integration token is not configured in backend environment."
+        return (
+            owner,
+            repo_name,
+            token,
+            api_base,
+            val_status,
+            val_msg,
+            None,
+            None,
+            None,
+        )
+
+    def is_configured(self, project_id: str | None = None) -> bool:
+        """Check whether GitHub integration credentials are configured and not marked invalid."""
+        _, _, token, _, val_status, _, _, _, _ = self.get_effective_config(project_id)
+        return bool(token and token.strip()) and (val_status != "invalid")
+
+    def get_default_target_repo(self, project_id: str | None = None) -> str:
+        """Get default target repository in owner/repo format."""
+        owner, repo_name, _, _, _, _, _, _, _ = self.get_effective_config(project_id)
         return f"{owner}/{repo_name}"
 
-    def get_status(self) -> GitHubIntegrationStatusResponse:
+    def get_status(self, project_id: str | None = None) -> GitHubIntegrationStatusResponse:
         """Retrieve GitHub integration configuration status without leaking credentials."""
-        target_repo = self.get_default_target_repo()
+        owner, repo_name, token, api_base, val_status, _, _, _, _ = self.get_effective_config(project_id)
+        configured = bool(token and token.strip() and val_status != "invalid")
+        target_repo = f"{owner}/{repo_name}"
         return GitHubIntegrationStatusResponse(
-            configured=self.is_configured(),
-            default_owner=self.settings.GITHUB_DEFAULT_OWNER,
-            default_repo=self.settings.GITHUB_DEFAULT_REPO,
+            configured=configured,
+            default_owner=owner,
+            default_repo=repo_name,
             target_repo=target_repo,
-            api_base_url=self.settings.GITHUB_API_BASE_URL,
+            api_base_url=api_base,
         )
+
+    def get_config(self, project_id: str | None = None) -> GitHubConfigResponse:
+        """Retrieve administrative GitHub configuration metadata without leaking sensitive credentials (US-506)."""
+        (
+            owner,
+            repo_name,
+            token,
+            api_base,
+            val_status,
+            val_msg,
+            last_validated,
+            updated_at,
+            updated_by,
+        ) = self.get_effective_config(project_id)
+
+        target_repo = f"{owner}/{repo_name}"
+        has_token = bool(token and token.strip())
+        configured = has_token and (val_status != "invalid")
+
+        return GitHubConfigResponse(
+            configured=configured,
+            owner=owner,
+            repo=repo_name,
+            target_repo=target_repo,
+            has_token=has_token,
+            api_base_url=api_base,
+            validation_status=val_status,
+            validation_message=val_msg,
+            last_validated_at=last_validated,
+            updated_at=updated_at,
+            updated_by=updated_by,
+            project_id=project_id,
+        )
+
+    async def validate_target_repo_access(
+        self,
+        owner: str,
+        repo: str,
+        token: str | None = None,
+        api_base_url: str | None = None,
+        project_id: str | None = None,
+    ) -> GitHubValidationResultResponse:
+        """Validate target repository and token access against GitHub permissions (US-506)."""
+        now = int(datetime.now(timezone.utc).timestamp())
+        clean_owner = owner.strip()
+        clean_repo = repo.strip()
+        target_repo = f"{clean_owner}/{clean_repo}"
+
+        if not REPO_FORMAT_REGEX.match(target_repo):
+            return GitHubValidationResultResponse(
+                valid=False,
+                status="invalid_format",
+                message=f"Invalid repository format '{target_repo}'. Must be 'owner/repository'.",
+                owner=clean_owner,
+                repo=clean_repo,
+                target_repo=target_repo,
+                has_issues_enabled=False,
+                has_write_access=False,
+                checked_at=now,
+            )
+
+        effective_token = token.strip() if token and token.strip() else None
+        if not effective_token:
+            _, _, current_token, _, _, _, _, _, _ = self.get_effective_config(project_id)
+            effective_token = current_token
+
+        if not effective_token:
+            return GitHubValidationResultResponse(
+                valid=False,
+                status="missing_token",
+                message="GitHub Personal Access Token is required to validate repository access.",
+                owner=clean_owner,
+                repo=clean_repo,
+                target_repo=target_repo,
+                has_issues_enabled=False,
+                has_write_access=False,
+                checked_at=now,
+            )
+
+        api_base = (api_base_url or self.settings.GITHUB_API_BASE_URL).rstrip("/")
+        repo_endpoint = f"{api_base}/repos/{clean_owner}/{clean_repo}"
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {effective_token}",
+            "X-GitHub-Api-Version": self.settings.GITHUB_API_VERSION,
+            "User-Agent": "Vulnify-Security-Agent",
+        }
+        timeout = float(self.settings.GITHUB_API_TIMEOUT_SECONDS)
+
+        try:
+            if self.http_client:
+                res = await self.http_client.get(repo_endpoint, headers=headers)
+            else:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    res = await client.get(repo_endpoint, headers=headers)
+
+            if res.status_code == 200:
+                data = res.json()
+                has_issues = data.get("has_issues", True)
+                permissions = data.get("permissions") or {}
+                has_push = bool(permissions.get("push", True))
+                has_admin = bool(permissions.get("admin", False))
+                has_issues_perm = permissions.get("issues") in (True, "write", "admin") or ("issues" not in permissions and (has_push or has_admin))
+
+                if not has_issues:
+                    return GitHubValidationResultResponse(
+                        valid=False,
+                        status="issues_disabled",
+                        message=f"Repository '{target_repo}' exists, but the Issues feature is disabled in GitHub settings.",
+                        owner=clean_owner,
+                        repo=clean_repo,
+                        target_repo=target_repo,
+                        has_issues_enabled=False,
+                        has_write_access=bool(has_push or has_admin),
+                        checked_at=now,
+                    )
+
+                if permissions and not (has_push or has_admin or has_issues_perm):
+                    return GitHubValidationResultResponse(
+                        valid=False,
+                        status="insufficient_permissions",
+                        message=f"Token has access to '{target_repo}', but lacks write/issues permission to create remediation issues.",
+                        owner=clean_owner,
+                        repo=clean_repo,
+                        target_repo=target_repo,
+                        has_issues_enabled=has_issues,
+                        has_write_access=False,
+                        checked_at=now,
+                    )
+
+                return GitHubValidationResultResponse(
+                    valid=True,
+                    status="valid",
+                    message=f"Successfully connected to repository '{target_repo}'. Token has permissions to create remediation issues.",
+                    owner=clean_owner,
+                    repo=clean_repo,
+                    target_repo=target_repo,
+                    has_issues_enabled=has_issues,
+                    has_write_access=True,
+                    checked_at=now,
+                )
+
+            elif res.status_code == 401:
+                return GitHubValidationResultResponse(
+                    valid=False,
+                    status="unauthorized",
+                    message="GitHub authentication failed: Personal Access Token is invalid, expired, or revoked (HTTP 401).",
+                    owner=clean_owner,
+                    repo=clean_repo,
+                    target_repo=target_repo,
+                    has_issues_enabled=False,
+                    has_write_access=False,
+                    checked_at=now,
+                )
+
+            elif res.status_code == 403:
+                return GitHubValidationResultResponse(
+                    valid=False,
+                    status="forbidden",
+                    message=f"Access forbidden by GitHub for repository '{target_repo}' (HTTP 403). Check token permissions and rate limits.",
+                    owner=clean_owner,
+                    repo=clean_repo,
+                    target_repo=target_repo,
+                    has_issues_enabled=False,
+                    has_write_access=False,
+                    checked_at=now,
+                )
+
+            elif res.status_code == 404:
+                return GitHubValidationResultResponse(
+                    valid=False,
+                    status="not_found",
+                    message=f"GitHub repository '{target_repo}' was not found, or the token does not have read access to it (HTTP 404). Note that private repositories return 404 if the token lacks access.",
+                    owner=clean_owner,
+                    repo=clean_repo,
+                    target_repo=target_repo,
+                    has_issues_enabled=False,
+                    has_write_access=False,
+                    checked_at=now,
+                )
+
+            else:
+                return GitHubValidationResultResponse(
+                    valid=False,
+                    status="upstream_error",
+                    message=f"GitHub API returned unexpected status {res.status_code} while validating repository '{target_repo}'.",
+                    owner=clean_owner,
+                    repo=clean_repo,
+                    target_repo=target_repo,
+                    has_issues_enabled=False,
+                    has_write_access=False,
+                    checked_at=now,
+                )
+
+        except (httpx.TimeoutException, httpx.NetworkError, Exception) as exc:
+            logger.warning("Network error validating GitHub repository access: %s", exc)
+            return GitHubValidationResultResponse(
+                valid=False,
+                status="network_error",
+                message=f"Unable to reach GitHub API endpoint '{api_base}'. Check network connectivity or API base URL.",
+                owner=clean_owner,
+                repo=clean_repo,
+                target_repo=target_repo,
+                has_issues_enabled=False,
+                has_write_access=False,
+                checked_at=now,
+            )
+
+    async def update_config(
+        self,
+        owner: str,
+        repo: str,
+        current_user: UserResponse,
+        token: str | None = None,
+        api_base_url: str | None = None,
+        project_id: str | None = None,
+        validate_before_save: bool = True,
+    ) -> GitHubConfigResponse:
+        """Update and persist administrative GitHub integration configuration (US-506)."""
+        now = int(datetime.now(timezone.utc).timestamp())
+        clean_owner = owner.strip()
+        clean_repo = repo.strip()
+        target_repo = f"{clean_owner}/{clean_repo}"
+        self.validate_target_repo(target_repo)
+
+        api_base = (api_base_url or self.settings.GITHUB_API_BASE_URL).rstrip("/")
+        config_id = project_id if project_id else "global"
+
+        existing = self.config_repo.get_config(config_id)
+
+        encrypted_token: str | None = None
+        if token and token.strip():
+            encrypted_token = encrypt_secret(token.strip(), self.settings.SESSION_SECRET)
+        elif existing and existing.encrypted_token:
+            encrypted_token = existing.encrypted_token
+
+        val_status = "unvalidated"
+        val_msg = None
+        last_validated: int | None = None
+
+        if validate_before_save:
+            val_res = await self.validate_target_repo_access(
+                owner=clean_owner,
+                repo=clean_repo,
+                token=token,
+                api_base_url=api_base,
+                project_id=project_id,
+            )
+            val_status = "valid" if val_res.valid else "invalid"
+            val_msg = val_res.message
+            last_validated = val_res.checked_at
+
+            if not val_res.valid:
+                record = GitHubConfigRecord(
+                    id=config_id,
+                    owner=clean_owner,
+                    repo=clean_repo,
+                    target_repo=target_repo,
+                    encrypted_token=encrypted_token,
+                    api_base_url=api_base,
+                    validation_status="invalid",
+                    validation_message=val_res.message,
+                    last_validated_at=last_validated,
+                    updated_at=now,
+                    updated_by=current_user.email,
+                )
+                self.config_repo.upsert_config(record)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"GitHub repository access validation failed: {val_res.message}",
+                )
+
+        record = GitHubConfigRecord(
+            id=config_id,
+            owner=clean_owner,
+            repo=clean_repo,
+            target_repo=target_repo,
+            encrypted_token=encrypted_token,
+            api_base_url=api_base,
+            validation_status=val_status,
+            validation_message=val_msg,
+            last_validated_at=last_validated,
+            updated_at=now,
+            updated_by=current_user.email,
+        )
+        self.config_repo.upsert_config(record)
+        return self.get_config(project_id)
 
     def validate_target_repo(self, target_repo: str) -> tuple[str, str]:
         """Validate target repository string format (owner/repo)."""
@@ -194,7 +557,7 @@ class GitHubService:
             )
 
         # Enforce that preview only targets the configured team-owned repository (US-504 AC-2)
-        configured_repo = self.get_default_target_repo()
+        configured_repo = self.get_default_target_repo(project_id)
         if request.target_repo and request.target_repo.strip().lower() != configured_repo.lower():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -288,8 +651,15 @@ class GitHubService:
 *Filed via Vulnify Graph-Powered Remediation Protocol (US-503 / US-504).*"""
 
         plan_hash = compute_plan_hash(project_id, finding_id, target_repo, title, body)
-        configured = self.is_configured()
-        warning = None if configured else "GitHub integration is not configured. Server GITHUB_TOKEN is missing or empty. Live issue creation requires server credentials."
+        configured = self.is_configured(project_id)
+        if configured:
+            warning = None
+        else:
+            _, _, eff_token, _, val_status, val_msg, _, _, _ = self.get_effective_config(project_id)
+            if not eff_token:
+                warning = "GitHub integration is not configured. Server GITHUB_TOKEN is missing or empty. Live issue creation requires server credentials."
+            else:
+                warning = f"GitHub integration is misconfigured: {val_msg or 'Validation failed'}. Live issue creation is blocked until configuration is corrected."
 
         return GitHubIssuePreviewResponse(
             project_id=project_id,
@@ -366,7 +736,7 @@ class GitHubService:
         # 2. Target repository validation (Must match configured team-owned repository - US-504 AC-2)
         owner, repo_name = self.validate_target_repo(request.target_repo)
         target_repo = f"{owner}/{repo_name}"
-        configured_repo = self.get_default_target_repo()
+        configured_repo = self.get_default_target_repo(project_id)
         if target_repo.lower() != configured_repo.lower():
             self.record_audit_event(
                 actor=current_user.email,
@@ -487,8 +857,25 @@ class GitHubService:
                     message=f"An issue for this exact remediation plan was already created (Issue #{existing.issue_number}). Duplicate creation prevented.",
                 )
 
-            # 6. Check GitHub Credentials
-            token = self.settings.GITHUB_TOKEN
+            # 6. Check GitHub Credentials and Configuration Status (US-506)
+            eff_owner, eff_repo, token, api_base, val_status, val_msg, _, _, _ = self.get_effective_config(project_id)
+            if val_status == "invalid":
+                self.record_audit_event(
+                    actor=current_user.email,
+                    action="create_github_issue",
+                    project_id=project_id,
+                    finding_id=finding_id,
+                    plan_hash=request.plan_hash,
+                    target_repo=target_repo,
+                    result="failed",
+                    failure_category="misconfigured_integration",
+                    request_id=req_id,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"GitHub integration is misconfigured: {val_msg or 'Repository validation failed'}. Issue creation is blocked.",
+                )
+
             if not token or not token.strip():
                 self.record_audit_event(
                     actor=current_user.email,
@@ -506,8 +893,8 @@ class GitHubService:
                     detail="GitHub integration is not configured. Server GITHUB_TOKEN environment variable is missing.",
                 )
 
-            api_base = self.settings.GITHUB_API_BASE_URL.rstrip("/")
-            issue_endpoint = f"{api_base}/repos/{owner}/{repo_name}/issues"
+            api_base_clean = api_base.rstrip("/")
+            issue_endpoint = f"{api_base_clean}/repos/{owner}/{repo_name}/issues"
             headers = {
                 "Accept": "application/vnd.github+json",
                 "Authorization": f"Bearer {token.strip()}",
@@ -793,5 +1180,6 @@ class GitHubService:
 def get_github_service(
     settings: Settings = Depends(get_settings),
     repo: IVulnerabilityRepository = Depends(get_vulnerability_repository),
+    config_repo: IGitHubConfigRepository = Depends(get_github_config_repository),
 ) -> GitHubService:
-    return GitHubService(settings=settings, repo=repo)
+    return GitHubService(settings=settings, repo=repo, config_repo=config_repo)
