@@ -151,7 +151,8 @@ async def list_projects(
 ) -> list[ProjectResponse]:
     """Retrieve all projects available to the authenticated user ordered by creation date."""
     try:
-        records = repo.list_projects()
+        user_id = str(current_user.id) if current_user.role != "admin" else None
+        records = repo.list_projects(user_id=user_id)
         return [
             ProjectResponse(
                 id=r.id,
@@ -159,6 +160,7 @@ async def list_projects(
                 ecosystem=r.ecosystem,
                 description=r.description,
                 created_at=r.created_at,
+                created_by=r.created_by,
             )
             for r in records
         ]
@@ -200,6 +202,7 @@ async def create_project(
                 name=project_data.name,
                 ecosystem=project_data.ecosystem,
                 description=project_data.description,
+                created_by=str(current_user.id),
             )
         except Exception as exc:
             raise HTTPException(
@@ -213,6 +216,7 @@ async def create_project(
         ecosystem=record.ecosystem,
         description=record.description,
         created_at=record.created_at,
+        created_by=record.created_by,
     )
 
 
@@ -255,22 +259,16 @@ async def get_ecosystem_capabilities(
 )
 async def get_project(
     project_id: str,
-    current_user: UserResponse = Depends(require_auth),
-    repo: IProjectRepository = Depends(get_project_repository),
+    project: ProjectRecord = Depends(get_valid_project),
 ) -> ProjectResponse:
     """Retrieve details of a specific project by its stable identifier."""
-    record = repo.get_by_id(project_id)
-    if record is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found.",
-        )
     return ProjectResponse(
-        id=record.id,
-        name=record.name,
-        ecosystem=record.ecosystem,
-        description=record.description,
-        created_at=record.created_at,
+        id=project.id,
+        name=project.name,
+        ecosystem=project.ecosystem,
+        description=project.description,
+        created_at=project.created_at,
+        created_by=project.created_by,
     )
 
 

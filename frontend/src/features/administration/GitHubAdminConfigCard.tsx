@@ -135,7 +135,7 @@ export function GitHubAdminConfigCard({
       setToken('')
       setValidationResult(null)
       setSaveSuccessNotice(
-        `Successfully updated GitHub target to "${updated.target_repo}". Configuration validated against GitHub REST API (US-506).`,
+        `Successfully updated GitHub target to "${updated.target_repo}". Configuration validated against GitHub REST API.`,
       )
       if (onConfigUpdated) {
         onConfigUpdated(updated)
@@ -191,9 +191,6 @@ export function GitHubAdminConfigCard({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-white">GitHub Integration Target & Credentials</h2>
-              <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-sky-300">
-                US-506 Admin Config
-              </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
               {projectName
@@ -256,7 +253,7 @@ export function GitHubAdminConfigCard({
         </div>
       </div>
 
-      {/* Misconfiguration Alert (US-506 AC-2) */}
+      {/* Misconfiguration Alert */}
       {isMisconfigured && config?.validation_message && (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-200 flex items-start gap-3">
           <ShieldAlert className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" />
@@ -264,7 +261,7 @@ export function GitHubAdminConfigCard({
             <span className="font-bold text-white">Issue Creation Blocked Due to Misconfiguration:</span>
             <p className="leading-relaxed text-rose-200/90">{config.validation_message}</p>
             <p className="text-[11px] text-rose-300/80 mt-1">
-              Per US-506 safety rules, remediation issues cannot be opened until target repository permissions are validated.
+              Per safety rules, remediation issues cannot be opened until target repository permissions are validated.
             </p>
           </div>
         </div>

@@ -101,7 +101,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 export function AppLayout() {
   const { user, logout } = useAuth()
-  const { activeProject } = useProjects()
+  const { activeProject, activeProjectId } = useProjects()
   const location = useLocation()
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -350,7 +350,7 @@ export function AppLayout() {
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-800">
           <div className="mx-auto max-w-7xl">
-            <Outlet />
+            <Outlet key={activeProjectId ?? 'no-project'} />
           </div>
         </main>
       </div>

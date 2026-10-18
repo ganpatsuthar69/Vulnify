@@ -83,9 +83,10 @@ async def require_admin(
 
 async def get_valid_project(
     project_id: str,
+    current_user: UserResponse = Depends(require_auth),
     repo: IProjectRepository = Depends(get_project_repository),
 ) -> ProjectRecord:
-    """Validate that a project exists by ID or raise 404 Not Found."""
+    """Validate that a project exists by ID and verify user authorization."""
     clean_id = project_id.strip()
     project = repo.get_by_id(clean_id)
     if project is None:
@@ -93,4 +94,15 @@ async def get_valid_project(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with ID '{clean_id}' not found.",
         )
+
+    # Multi-project data isolation & authorization:
+    # Admins can access all projects.
+    # Regular users can only access projects they created (or unowned demo projects).
+    if current_user.role != "admin":
+        if project.created_by is not None and str(project.created_by) != str(current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access to this project is forbidden.",
+            )
+
     return project

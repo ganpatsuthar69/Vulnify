@@ -355,11 +355,11 @@ export function FindingDetailPage() {
         ) : null}
       </div>
 
-      {/* US-301: Priority Band & Decision Reasons Card */}
+      {/* Priority Band & Decision Reasons Card */}
       <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-6 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <h2 className="text-sm font-bold text-white">Priority Ranking &amp; Evidence (US-301)</h2>
+            <h2 className="text-sm font-bold text-white">Priority Ranking &amp; Evidence</h2>
             <span
               className={`rounded px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${
                 finding.priority.toLowerCase() === 'highest'

@@ -17,17 +17,19 @@ class ProjectRecord:
     ecosystem: str
     description: str | None
     created_at: int
+    created_by: str | None = None
 
 
 class IProjectRepository(Protocol):
     def get_by_id(self, project_id: str) -> ProjectRecord | None: ...
     def get_by_normalized_name(self, normalized_name: str) -> ProjectRecord | None: ...
-    def list_projects(self) -> list[ProjectRecord]: ...
+    def list_projects(self, user_id: str | None = None) -> list[ProjectRecord]: ...
     def create_project(
         self,
         name: str,
         ecosystem: str,
         description: str | None = None,
+        created_by: str | None = None,
     ) -> ProjectRecord: ...
 
 
@@ -47,6 +49,7 @@ class FalkorProjectRepository:
         if not result.result_set:
             return None
         row = result.result_set[0]
+        created_by = str(row[5]) if len(row) > 5 and row[5] is not None else None
         return ProjectRecord(
             id=str(row[0]),
             name=str(row[1]),
@@ -54,6 +57,7 @@ class FalkorProjectRepository:
             ecosystem=str(row[2]),
             description=str(row[3]) if row[3] is not None else None,
             created_at=int(row[4]),
+            created_by=created_by,
         )
 
     def get_by_normalized_name(self, normalized_name: str) -> ProjectRecord | None:
@@ -65,6 +69,7 @@ class FalkorProjectRepository:
         if not result.result_set:
             return None
         row = result.result_set[0]
+        created_by = str(row[5]) if len(row) > 5 and row[5] is not None else None
         return ProjectRecord(
             id=str(row[0]),
             name=str(row[1]),
@@ -72,13 +77,15 @@ class FalkorProjectRepository:
             ecosystem=str(row[2]),
             description=str(row[3]) if row[3] is not None else None,
             created_at=int(row[4]),
+            created_by=created_by,
         )
 
-    def list_projects(self) -> list[ProjectRecord]:
+    def list_projects(self, user_id: str | None = None) -> list[ProjectRecord]:
         graph = self.client.get_graph()
         result = graph.query(self._query_list)
         projects: list[ProjectRecord] = []
         for row in result.result_set:
+            created_by = str(row[5]) if len(row) > 5 and row[5] is not None else None
             projects.append(
                 ProjectRecord(
                     id=str(row[0]),
@@ -87,8 +94,11 @@ class FalkorProjectRepository:
                     ecosystem=str(row[2]),
                     description=str(row[3]) if row[3] is not None else None,
                     created_at=int(row[4]),
+                    created_by=created_by,
                 )
             )
+        if user_id:
+            return [p for p in projects if p.created_by == user_id or p.created_by is None]
         return projects
 
     def create_project(
@@ -96,6 +106,7 @@ class FalkorProjectRepository:
         name: str,
         ecosystem: str,
         description: str | None = None,
+        created_by: str | None = None,
     ) -> ProjectRecord:
         graph = self.client.get_graph()
         project_id = str(uuid.uuid4())
@@ -113,6 +124,7 @@ class FalkorProjectRepository:
                 "ecosystem": ecosystem.strip(),
                 "description": cleaned_desc,
                 "created_at": created_at,
+                "created_by": created_by,
             },
         )
         return ProjectRecord(
@@ -122,6 +134,7 @@ class FalkorProjectRepository:
             ecosystem=ecosystem.strip(),
             description=cleaned_desc,
             created_at=created_at,
+            created_by=created_by,
         )
 
 
@@ -138,9 +151,11 @@ class InMemoryProjectRepository:
     def get_by_normalized_name(self, normalized_name: str) -> ProjectRecord | None:
         return self._projects_by_norm.get(normalized_name.strip().lower())
 
-    def list_projects(self) -> list[ProjectRecord]:
+    def list_projects(self, user_id: str | None = None) -> list[ProjectRecord]:
         items = list(self._projects_by_id.values())
         items.sort(key=lambda p: (-p.created_at, p.name))
+        if user_id:
+            return [p for p in items if p.created_by == user_id or p.created_by is None]
         return items
 
     def create_project(
@@ -148,6 +163,7 @@ class InMemoryProjectRepository:
         name: str,
         ecosystem: str,
         description: str | None = None,
+        created_by: str | None = None,
     ) -> ProjectRecord:
         project_id = str(uuid.uuid4())
         cleaned_name = name.strip()
@@ -162,6 +178,7 @@ class InMemoryProjectRepository:
             ecosystem=ecosystem.strip(),
             description=cleaned_desc,
             created_at=now,
+            created_by=created_by,
         )
         self._projects_by_id[record.id] = record
         self._projects_by_norm[normalized_name] = record

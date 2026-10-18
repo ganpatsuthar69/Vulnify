@@ -66,9 +66,6 @@ export function ExposurePathsPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-bold text-white">Exposure Paths &amp; Topology Traversal</h1>
-            <span className="rounded-full bg-sky-500/20 border border-sky-500/30 px-2.5 py-0.5 text-xs font-semibold text-sky-300">
-              US-205 &bull; Architectural Exposure (R2)
-            </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
             Traverses FalkorDB graph topology to evaluate how internet-facing entrypoints reach vulnerable packages
@@ -88,7 +85,7 @@ export function ExposurePathsPage() {
         </button>
       </div>
 
-      {/* Mandatory Honesty & Safety Alert Banner (US-205 AC2) */}
+      {/* Mandatory Honesty & Safety Alert Banner */}
       <div
         role="alert"
         className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-xs text-amber-200 leading-relaxed space-y-1.5"
@@ -104,7 +101,7 @@ export function ExposurePathsPage() {
         </p>
       </div>
 
-      {/* Missing Topology Notice (US-205 & US-207) */}
+      {/* Missing Topology Notice */}
       {isMissingTopology && (
         <div className="rounded-xl border border-amber-500/30 bg-[#161208] p-4 text-xs text-amber-200 flex items-start gap-3">
           <Network className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
@@ -118,12 +115,12 @@ export function ExposurePathsPage() {
         </div>
       )}
 
-      {/* Unsupported Ecosystems Card (US-205 AC3) */}
+      {/* Unsupported Ecosystems Card */}
       {unsupportedEcosystems.length > 0 && (
         <div className="rounded-xl border border-slate-800 bg-[#0f1822] p-5 shadow-xl space-y-3">
           <div className="flex items-center gap-2 text-sm font-bold text-white border-b border-slate-800 pb-2">
             <HelpCircle className="h-4 w-4 text-zinc-400" />
-            <span>Unsupported Ecosystems &mdash; Listed as Not Analyzed (US-205 AC3)</span>
+            <span>Unsupported Ecosystems &mdash; Listed as Not Analyzed</span>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
             The following package dependencies belong to ecosystems not currently supported for automated SemVer
@@ -200,7 +197,7 @@ export function ExposurePathsPage() {
                       {item.severity}
                     </span>
 
-                    {/* Exposure Status Badge (US-205 AC1) */}
+                    {/* Exposure Status Badge */}
                     {item.exposure_status === 'internet_exposed' ? (
                       <span className="rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-rose-500/40 bg-rose-500/15 text-rose-300 flex items-center gap-1">
                         <Globe className="h-3 w-3" />
@@ -216,7 +213,7 @@ export function ExposurePathsPage() {
                       </span>
                     )}
 
-                    {/* Synthetic Edges Flag (US-205 AC3) */}
+                    {/* Synthetic Edges Flag */}
                     {item.has_synthetic_edges && (
                       <span className="rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-amber-500/40 bg-amber-500/10 text-amber-300 flex items-center gap-1">
                         <span>Synthetic Edge</span>
@@ -238,7 +235,7 @@ export function ExposurePathsPage() {
                   </Link>
                 </div>
 
-                {/* Path Visual Representation (US-205 AC1) */}
+                {/* Path Visual Representation */}
                 {item.paths.map((p) => (
                   <div key={p.id} className="rounded-lg border border-slate-800 bg-[#0b121a] p-4 space-y-3">
                     <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
@@ -289,7 +286,7 @@ export function ExposurePathsPage() {
                                       ? 'bg-amber-500/15 border-amber-500/30 text-amber-300 font-bold'
                                       : 'bg-slate-900 border-slate-800 text-slate-400'
                                   }`}
-                                  title={edgeToNext.is_synthetic ? 'Synthetic Edge (US-205 AC3)' : 'Verified Manifest Edge'}
+                                  title={edgeToNext.is_synthetic ? 'Synthetic Edge' : 'Verified Manifest Edge'}
                                 >
                                   {edgeToNext.relationship_type}
                                   {edgeToNext.is_synthetic && ' (synthetic)'}

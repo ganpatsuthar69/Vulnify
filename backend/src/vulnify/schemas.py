@@ -182,6 +182,7 @@ class ProjectResponse(BaseModel):
     ecosystem: str
     description: str | None = None
     created_at: int
+    created_by: str | None = None
 
 
 

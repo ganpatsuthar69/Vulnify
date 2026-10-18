@@ -118,7 +118,7 @@ export function IntegrationsPage() {
         'Batch Mode': 'Supported (POST /v1/querybatch)',
         'Local Cache': 'Disk-backed LRU Cache (backend/.osv_cache)',
         Ecosystems: 'npm, PyPI supported',
-        'Stale Data Threshold': '7 days (US-107)',
+        'Stale Data Threshold': '7 days',
       },
     },
     {
@@ -129,7 +129,7 @@ export function IntegrationsPage() {
       details: {
         Target: 'vulnify/demo-workspace',
         'Token Scope': 'Least-privilege (issues:write)',
-        'Approval Policy': 'Cryptographic Plan Hash Required (US-504)',
+        'Approval Policy': 'Cryptographic Plan Hash Required',
         CSRF: 'Enforced via X-Requested-With header',
       },
     },
@@ -246,7 +246,7 @@ export function IntegrationsPage() {
         ))}
       </div>
 
-      {/* GitHub Integration Admin Configuration UI (US-506) */}
+      {/* GitHub Integration Admin Configuration UI */}
       <GitHubAdminConfigCard
         projectId={activeProject?.id}
         projectName={activeProject?.name}

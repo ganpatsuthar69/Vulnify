@@ -55,6 +55,7 @@ export interface Project {
   ecosystem: SupportedEcosystem
   description?: string | null
   created_at: number
+  created_by?: string | null
 }
 
 export interface ProjectCreateRequest {

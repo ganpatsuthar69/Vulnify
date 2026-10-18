@@ -4,12 +4,13 @@
 MATCH (p:Project {id: $project_id})-[:HAS_SERVICE]->(s:Service)
 MATCH path = (s)-[:DEPENDS_ON*1..8]->(pv:PackageVersion)
 MATCH (v:Vulnerability)-[r:AFFECTS]->(pv)
+OPTIONAL MATCH (p)-[:HAS_DECISION]->(d:TriageDecision {advisory_id: v.id, package_version_id: pv.id})
 WHERE r.status = 'affected'
   AND ($service_id IS NULL OR s.id = $service_id)
   AND ($search IS NULL OR toLower(v.id) CONTAINS toLower($search) OR toLower(pv.name) CONTAINS toLower($search))
   AND ($priority IS NULL OR toLower(coalesce(r.priority, v.priority, 'unknown')) = toLower($priority))
-  AND ($status IS NULL OR toLower(coalesce(r.triage_status, 'open')) = toLower($status))
-WITH s, pv, v, r, min(length(path)) AS path_depth
+  AND ($status IS NULL OR toLower(coalesce(d.status, r.triage_status, 'open')) = toLower($status))
+WITH s, pv, v, r, d, min(length(path)) AS path_depth
 RETURN s.id AS service_id,
        s.name AS service_name,
        v.id AS advisory_id,
@@ -26,13 +27,13 @@ RETURN s.id AS service_id,
        r.matched_range AS matched_range,
        r.fixed_version AS fixed_version,
        coalesce(r.priority, v.priority, 'unknown') AS priority,
-       coalesce(r.triage_status, 'open') AS status,
+       coalesce(d.status, r.triage_status, 'open') AS status,
        path_depth,
-       coalesce(r.review_required, false) AS review_required,
-       r.review_reason AS review_reason,
-       r.triaged_by AS triaged_by,
-       r.triaged_at AS triaged_at,
-       r.triage_justification AS triage_justification,
-       r.baseline_data AS baseline_data,
-       r.reviewed_at AS reviewed_at
+       coalesce(d.review_required, r.review_required, false) AS review_required,
+       coalesce(d.review_reason, r.review_reason) AS review_reason,
+       coalesce(d.triaged_by, r.triaged_by) AS triaged_by,
+       coalesce(d.triaged_at, r.triaged_at) AS triaged_at,
+       coalesce(d.justification, r.triage_justification) AS triage_justification,
+       coalesce(d.baseline_data, r.baseline_data) AS baseline_data,
+       coalesce(d.reviewed_at, r.reviewed_at) AS reviewed_at
 ORDER BY v.id ASC, pv.name ASC, s.name ASC, pv.version ASC

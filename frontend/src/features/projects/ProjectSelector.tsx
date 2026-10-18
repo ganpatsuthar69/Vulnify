@@ -1,5 +1,6 @@
 import { ChevronDown, FolderGit2, Plus, Check } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import { useProjects } from './ProjectProvider'
 
 interface ProjectSelectorProps {
@@ -8,6 +9,8 @@ interface ProjectSelectorProps {
 
 export function ProjectSelector({ onOpenCreateModal }: ProjectSelectorProps) {
   const { projects, activeProject, activeProjectId, selectProject, isLoading } = useProjects()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -115,6 +118,9 @@ export function ProjectSelector({ onOpenCreateModal }: ProjectSelectorProps) {
                   onClick={() => {
                     selectProject(proj.id)
                     setIsOpen(false)
+                    if (location.search) {
+                      navigate(location.pathname, { replace: true })
+                    }
                   }}
                   className={`flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-xs transition-colors ${
                     isSelected

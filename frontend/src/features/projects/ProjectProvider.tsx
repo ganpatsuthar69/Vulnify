@@ -83,6 +83,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     if (status !== 'authenticated') {
       setProjects([])
       setActiveProjectId(null)
+      setStoredProjectId(null)
       setIsLoading(false)
       return
     }

@@ -869,12 +869,12 @@ export async function listProjectServices(projectId: string): Promise<ProjectSer
   throw new ProjectApiError('Failed to fetch project services.', { status: response.status })
 }
 
-function getMockFindings(projectId: string): FindingItem[] {
-  return [
+const mockFindingsStore: Record<string, FindingItem[]> = {
+  'mock-proj-1': [
     {
       id: 'mock-finding-1',
-      project_id: projectId,
-      service_id: `${projectId}:payment-api`,
+      project_id: 'mock-proj-1',
+      service_id: 'mock-proj-1:payment-api',
       service_name: 'payment-api',
       advisory_id: 'GHSA-29mw-wpgm-hmr9',
       advisory_summary: 'Regular Expression Denial of Service (ReDoS) in lodash',
@@ -900,7 +900,39 @@ function getMockFindings(projectId: string): FindingItem[] {
       severity: 'HIGH',
       retrieved_at: Math.floor(Date.now() / 1000) - 3600,
     },
-  ]
+  ],
+  'mock-proj-2': [
+    {
+      id: 'mock-finding-proj2-1',
+      project_id: 'mock-proj-2',
+      service_id: 'mock-proj-2:auth-api',
+      service_name: 'auth-api',
+      advisory_id: 'GHSA-3647-7977-m75v',
+      advisory_summary: 'Prototype Pollution in json-pointer',
+      source_url: 'https://github.com/advisories/GHSA-3647-7977-m75v',
+      package_name: 'json-pointer',
+      ecosystem: 'npm',
+      package_version: '0.6.1',
+      package_version_id: 'npm:json-pointer@0.6.1',
+      priority: 'Highest',
+      priority_reasons: [
+        'Advisory severity is Critical',
+        'Direct dependency reachable from internet-facing service',
+      ],
+      scoring_version: 'v1.0.0',
+      status: 'open',
+      path_depth: 1,
+      path_status: 'path_found',
+      match_reason: 'Version 0.6.1 is affected',
+      reason_code: 'WITHIN_AFFECTED_RANGE',
+      severity: 'CRITICAL',
+      retrieved_at: Math.floor(Date.now() / 1000) - 3600,
+    },
+  ],
+}
+
+function getMockFindings(projectId: string): FindingItem[] {
+  return mockFindingsStore[projectId] || []
 }
 
 export async function getProjectFindings(
@@ -1988,11 +2020,19 @@ export async function recordFindingDecision(
   data: TriageDecisionRequest,
 ): Promise<TriageDecisionResponse> {
   if (isMockMode()) {
+    const list = mockFindingsStore[projectId] || []
+    const target = list.find((f) => f.id === findingId)
+    if (target) {
+      target.status = data.status
+      target.triage_justification = data.justification ?? null
+      target.triaged_by = 'current_user'
+      target.triaged_at = Math.floor(Date.now() / 1000)
+    }
     return {
       project_id: projectId,
       finding_id: findingId,
-      advisory_id: 'GHSA-mock',
-      package_version_id: 'npm:mock@1.0.0',
+      advisory_id: target?.advisory_id || 'GHSA-mock',
+      package_version_id: target?.package_version_id || 'npm:mock@1.0.0',
       status: data.status,
       justification: data.justification ?? null,
       triaged_by: 'current_user',
@@ -2036,11 +2076,18 @@ export async function reviewFindingDecision(
   data: ReviewDecisionRequest,
 ): Promise<TriageDecisionResponse> {
   if (isMockMode()) {
+    const list = mockFindingsStore[projectId] || []
+    const target = list.find((f) => f.id === findingId)
+    if (target) {
+      if (data.new_status) target.status = data.new_status
+      if (data.new_justification) target.triage_justification = data.new_justification
+      target.review_required = false
+    }
     return {
       project_id: projectId,
       finding_id: findingId,
-      advisory_id: 'GHSA-mock',
-      package_version_id: 'npm:mock@1.0.0',
+      advisory_id: target?.advisory_id || 'GHSA-mock',
+      package_version_id: target?.package_version_id || 'npm:mock@1.0.0',
       status: data.new_status ?? 'not_affected',
       justification: data.new_justification ?? null,
       triaged_by: 'current_user',
